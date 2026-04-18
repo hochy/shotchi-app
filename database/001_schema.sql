@@ -57,134 +57,62 @@ CREATE TRIGGER handle_streaks_updated_at
   EXECUTE FUNCTION public.handle_updated_at();
 
 -- Function to calculate current streak
-CREATE OR REPLACE FUNCTION public.calculate_streak(user_id uuid)
+CREATE OR REPLACE FUNCTION public.calculate_streak(p_user_id uuid)
 RETURNS TABLE(
   current_streak integer,
   longest_streak integer,
   next_scheduled_date date
 ) AS $$
 DECLARE
-  injection_day text;
-  last_injection date;
-  streak_count integer := 0;
-  max_streak integer := 0;
-  temp_date date;
-  next_date date;
+  v_injection_day text;
+  v_last_injection date;
+  v_target_dow integer;
+  v_current_dow integer;
+  v_next_date date;
 BEGIN
   -- Get injection day
-  SELECT injection_day INTO injection_day FROM public.profiles WHERE id = user_id;
+  SELECT injection_day INTO v_injection_day FROM public.profiles WHERE id = p_user_id;
   
+  -- Map day string to DOW (0=Sunday)
+  v_target_dow := CASE v_injection_day
+    WHEN 'sunday' THEN 0
+    WHEN 'monday' THEN 1
+    WHEN 'tuesday' THEN 2
+    WHEN 'wednesday' THEN 3
+    WHEN 'thursday' THEN 4
+    WHEN 'friday' THEN 5
+    WHEN 'saturday' THEN 6
+  END;
+
   -- Get last injection date
-  SELECT MAX(scheduled_for) INTO last_injection 
+  SELECT MAX(scheduled_for) INTO v_last_injection 
   FROM public.injections 
-  WHERE user_id = user_id
-  ORDER BY scheduled_for DESC;
+  WHERE user_id = p_user_id;
   
-  IF last_injection IS NULL THEN
-    -- No injections yet
-    current_streak := 0;
-    longest_streak := 0;
-    next_scheduled_date := now() + 
-      CASE injection_day
-        WHEN 'monday' THEN INTERVAL '1 day'
-        WHEN 'tuesday' THEN INTERVAL '6 days'
-        WHEN 'wednesday' THEN INTERVAL '5 days'
-        WHEN 'thursday' THEN INTERVAL '4 days'
-        WHEN 'friday' THEN INTERVAL '3 days'
-        WHEN 'saturday' THEN INTERVAL '2 days'
-        WHEN 'sunday' THEN INTERVAL '1 day'
-      END;
-    RETURN NEXT;
-    RETURN;
-  END IF;
-  
-  -- Calculate current streak
-  temp_date := last_injection;
-  streak_count := 0;
-  
-  WHILE streak_count < 52 LOOP -- Check up to 52 weeks
-    temp_date := temp_date - INTERVAL '7 days';
-    
-    SELECT COUNT(*) INTO max_streak 
-    FROM public.injections 
-    WHERE user_id = user_id 
-    AND scheduled_for = temp_date;
-    
-    IF max_streak > 0 THEN
-      streak_count := streak_count + 1;
-      max_streak := GREATEST(max_streak, streak_count);
-    ELSE
-      EXIT;
-    END IF;
-  END LOOP;
-  
-  current_streak := streak_count;
-  longest_streak := GREATEST(
-    (SELECT MAX(streak_count) FROM (
-      SELECT COUNT(*) as streak_count 
-      FROM public.injections 
-      WHERE user_id = user_id 
-      GROUP BY scheduled_for 
-      ORDER BY scheduled_for
-    ) as subq),
-    0
-  );
-  
+  -- Get calculated streaks from the table (simpler for now)
+  SELECT s.current_streak, s.longest_streak INTO current_streak, longest_streak 
+  FROM public.streaks s WHERE user_id = p_user_id;
+
+  IF current_streak IS NULL THEN current_streak := 0; END IF;
+  IF longest_streak IS NULL THEN longest_streak := 0; END IF;
+
   -- Calculate next scheduled date
-  next_date := last_injection + INTERVAL '7 days';
+  IF v_last_injection IS NULL THEN
+    v_next_date := now()::date;
+  ELSE
+    v_next_date := v_last_injection + 7;
+  END IF;
+
+  -- Align to the correct day of week
+  v_current_dow := EXTRACT(DOW FROM v_next_date);
+  v_next_date := v_next_date + ((v_target_dow - v_current_dow + 7) % 7);
   
-  -- If next date is in the past, get the next future injection day
-  WHILE next_date < now()::date LOOP
-    next_date := next_date + INTERVAL '1 day';
-    
-    -- Adjust to next injection day
-    CASE injection_day
-      WHEN 'monday' THEN
-        CASE WHEN EXTRACT(DOW FROM next_date) = 1 THEN
-          next_date := next_date
-        ELSE
-          next_date := next_date + (1 - EXTRACT(DOW FROM next_date)) || ' days'
-        END;
-      WHEN 'tuesday' THEN
-        CASE WHEN EXTRACT(DOW FROM next_date) = 2 THEN
-          next_date := next_date
-        ELSE
-          next_date := next_date + (2 - EXTRACT(DOW FROM next_date)) || ' days'
-        END;
-      WHEN 'wednesday' THEN
-        CASE WHEN EXTRACT(DOW FROM next_date) = 3 THEN
-          next_date := next_date
-        ELSE
-          next_date := next_date + (3 - EXTRACT(DOW FROM next_date)) || ' days'
-        END;
-      WHEN 'thursday' THEN
-        CASE WHEN EXTRACT(DOW FROM next_date) = 4 THEN
-          next_date := next_date
-        ELSE
-          next_date := next_date + (4 - EXTRACT(DOW FROM next_date)) || ' days'
-        END;
-      WHEN 'friday' THEN
-        CASE WHEN EXTRACT(DOW FROM next_date) = 5 THEN
-          next_date := next_date
-        ELSE
-          next_date := next_date + (5 - EXTRACT(DOW FROM next_date)) || ' days'
-        END;
-      WHEN 'saturday' THEN
-        CASE WHEN EXTRACT(DOW FROM next_date) = 6 THEN
-          next_date := next_date
-        ELSE
-          next_date := next_date + (6 - EXTRACT(DOW FROM next_date)) || ' days'
-        END;
-      WHEN 'sunday' THEN
-        CASE WHEN EXTRACT(DOW FROM next_date) = 0 THEN
-          next_date := next_date
-        ELSE
-          next_date := next_date + (7 - EXTRACT(DOW FROM next_date)) || ' days'
-        END;
-    END CASE;
+  -- If calculated date is still in the past, move forward
+  WHILE v_next_date < now()::date LOOP
+    v_next_date := v_next_date + 7;
   END LOOP;
-  
-  next_scheduled_date := next_date;
+
+  next_scheduled_date := v_next_date;
   
   RETURN NEXT;
 END;
@@ -212,41 +140,19 @@ CREATE POLICY "Users can view their own injections" ON public.injections
 CREATE POLICY "Users can insert their own injections" ON public.injections
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can update their own injections" ON public.injections
-  FOR UPDATE USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own injections" ON public.injections
-  FOR DELETE USING (auth.uid() = user_id);
-
 -- Streaks policies
 CREATE POLICY "Users can view their own streaks" ON public.streaks
-  FOR SELECT USING (auth.uid() = id);
-
-CREATE POLICY "Users can update their own streaks" ON public.streaks
-  FOR UPDATE USING (auth.uid() = id);
-
-CREATE POLICY "Users can insert their own streaks" ON public.streaks
-  FOR INSERT WITH CHECK (auth.uid() = id);
+  FOR SELECT USING (auth.uid() = user_id);
 
 -- Create function to handle new user
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, injection_day, reminder_time, notifications_enabled, overdue_enabled)
-  VALUES (
-    new.id,
-    'monday',
-    '09:00',
-    true,
-    true
-  );
+  INSERT INTO public.profiles (id, injection_day, reminder_time)
+  VALUES (new.id, 'monday', '09:00');
   
   INSERT INTO public.streaks (user_id, current_streak, longest_streak)
-  VALUES (
-    new.id,
-    0,
-    0
-  );
+  VALUES (new.id, 0, 0);
   
   RETURN new;
 END;
@@ -257,13 +163,13 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- Create view for easy streak access
+-- View for streaks
 CREATE OR REPLACE VIEW public.user_streaks AS
 SELECT 
-  u.id,
-  u.current_streak,
-  u.longest_streak,
+  s.user_id as id,
+  s.current_streak,
+  s.longest_streak,
   p.injection_day,
   p.reminder_time
-FROM public.streaks u
-JOIN public.profiles p ON u.user_id = p.id;
+FROM public.streaks s
+JOIN public.profiles p ON s.user_id = p.id;

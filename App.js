@@ -2,99 +2,69 @@ import React from 'react'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { StatusBar } from 'expo-status-bar'
-import { supabase } from './src/lib/supabase'
-import { needsOnboarding } from './src/lib/database'
+import { AppStateProvider, useAppState } from './src/context/AppStateContext'
 import HomeScreen from './src/screens/HomeScreen'
 import LogShotScreen from './src/screens/LogShotScreen'
 import HistoryScreen from './src/screens/HistoryScreen'
 import SettingsScreen from './src/screens/SettingsScreen'
 import AuthScreen from './src/screens/AuthScreen'
 import OnboardingScreen from './src/screens/OnboardingScreen'
+import { ActivityIndicator, View } from 'react-native'
 
 const Stack = createNativeStackNavigator()
 
-export default function App() {
-  const [session, setSession] = React.useState(null)
-  const [loading, setLoading] = React.useState(true)
-  const [showOnboarding, setShowOnboarding] = React.useState(false)
-
-  React.useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session)
-
-      // Check if user needs onboarding
-      if (session) {
-        const needsSetup = await needsOnboarding()
-        setShowOnboarding(needsSetup)
-      }
-
-      setLoading(false)
-    })
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session)
-
-      // Check onboarding for new session
-      if (session) {
-        const needsSetup = await needsOnboarding()
-        setShowOnboarding(needsSetup)
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
+function AppNavigator() {
+  const { session, settings, loading } = useAppState()
+  const [skippedAuth, setSkippedAuth] = React.useState(false)
 
   if (loading) {
-    return null // Or a loading screen
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F5F5' }}>
+        <ActivityIndicator size="large" color="#7BAF8E" />
+      </View>
+    )
   }
 
+  // LOGIC:
+  // 1. If not authenticated (no session AND not skipped), show Auth
+  // 2. If authenticated BUT onboarding not done, show Onboarding
+  // 3. Otherwise, show Main App (Home, etc)
+  
+  const isAuthenticated = !!session || skippedAuth
+  const needsOnboarding = !settings.hasCompletedOnboarding
+
   return (
-    <NavigationContainer>
-      <StatusBar style="auto" />
-      <Stack.Navigator>
-        {!session ? (
-          // Auth flow
-          <Stack.Screen
-            name="Auth"
-            component={AuthScreen}
-            options={{ headerShown: false }}
-          />
-        ) : showOnboarding ? (
-          // Onboarding flow (shown once after signup)
-          <Stack.Screen
-            name="Onboarding"
-            component={OnboardingScreen}
-            options={{ headerShown: false }}
-            initialParams={{ userId: session.user.id }}
-          />
-        ) : (
-          // Main app
-          <>
-            <Stack.Screen
-              name="Home"
-              component={HomeScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="LogShot"
-              component={LogShotScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="History"
-              component={HistoryScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="Settings"
-              component={SettingsScreen}
-              options={{ headerShown: false }}
-            />
-          </>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <Stack.Navigator>
+      {!isAuthenticated ? (
+        <Stack.Screen name="Auth" options={{ headerShown: false }}>
+          {(props) => <AuthScreen {...props} onSkip={() => setSkippedAuth(true)} />}
+        </Stack.Screen>
+      ) : needsOnboarding ? (
+        <Stack.Screen 
+          name="Onboarding" 
+          component={OnboardingScreen} 
+          options={{ headerShown: false }}
+          initialParams={{ userId: session?.id }}
+        />
+      ) : (
+        <>
+          <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="LogShot" component={LogShotScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="History" component={HistoryScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
+        </>
+      )}
+    </Stack.Navigator>
+  )
+}
+
+export default function App() {
+  return (
+    <AppStateProvider>
+      <NavigationContainer>
+        <StatusBar style="auto" />
+        <AppNavigator />
+      </NavigationContainer>
+    </AppStateProvider>
   )
 }

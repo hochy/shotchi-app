@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
-import { supabase } from '../lib/supabase'
+import { useAppState } from '../context/AppStateContext'
+import * as Haptics from 'expo-haptics'
 
-export default function OnboardingScreen({ navigation, route }) {
-  const { userId } = route.params || {}
-  const [step, setStep] = useState(1) // 1: day, 2: time, 3: done
+export default function OnboardingScreen({ navigation }) {
+  const { updateSettings } = useAppState()
+  const [step, setStep] = useState(1)
   const [injectionDay, setInjectionDay] = useState('monday')
   const [reminderTime, setReminderTime] = useState(new Date())
   const [showTimePicker, setShowTimePicker] = useState(false)
@@ -22,6 +23,7 @@ export default function OnboardingScreen({ navigation, route }) {
   ]
 
   const handleNext = async () => {
+    Haptics.selectionAsync()
     if (step === 1) {
       setStep(2)
     } else if (step === 2) {
@@ -35,22 +37,18 @@ export default function OnboardingScreen({ navigation, route }) {
       const hours = reminderTime.getHours().toString().padStart(2, '0')
       const minutes = reminderTime.getMinutes().toString().padStart(2, '0')
       const timeString = `${hours}:${minutes}`
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
-      // Get timezone
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      // Use the centralized updateSettings which now handles notification scheduling
+      await updateSettings({
+        injection_day: injectionDay,
+        reminder_time: timeString,
+        timezone: timezone,
+        has_completed_onboarding: true,
+        notifications_enabled: true
+      })
 
-      // Update profile
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          injection_day: injectionDay,
-          reminder_time: timeString,
-          timezone: timezone
-        })
-        .eq('id', userId)
-
-      if (error) throw error
-
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
       setStep(3)
     } catch (error) {
       console.error('Error saving settings:', error)
@@ -61,31 +59,24 @@ export default function OnboardingScreen({ navigation, route }) {
   }
 
   const handleDone = () => {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Home' }]
-    })
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    // No need to reset navigation manually, AppStateContext will detect hasCompletedOnboarding
+    // and AppNavigator will automatically switch to the main stack.
   }
 
   const renderStep1 = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>What day do you take your shot?</Text>
-      <Text style={styles.stepSubtitle}>Select your weekly injection day</Text>
+      <Text style={styles.stepTitle}>Pick your shot day</Text>
+      <Text style={styles.stepSubtitle}>Consistency is key for Adi's happiness!</Text>
 
       <View style={styles.daysContainer}>
         {injectionDays.map(day => (
           <TouchableOpacity
             key={day.value}
-            style={[
-              styles.dayButton,
-              injectionDay === day.value && styles.dayButtonSelected
-            ]}
+            style={[styles.dayButton, injectionDay === day.value && styles.dayButtonSelected]}
             onPress={() => setInjectionDay(day.value)}
           >
-            <Text style={[
-              styles.dayText,
-              injectionDay === day.value && styles.dayTextSelected
-            ]}>
+            <Text style={[styles.dayText, injectionDay === day.value && styles.dayTextSelected]}>
               {day.label}
             </Text>
           </TouchableOpacity>
@@ -100,66 +91,44 @@ export default function OnboardingScreen({ navigation, route }) {
 
   const renderStep2 = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>When should we remind you?</Text>
-      <Text style={styles.stepSubtitle}>Set your reminder time</Text>
+      <Text style={styles.stepTitle}>What time?</Text>
+      <Text style={styles.stepSubtitle}>We'll send a nudge so you never miss it.</Text>
 
-      <TouchableOpacity
-        style={styles.timeButton}
-        onPress={() => setShowTimePicker(true)}
-      >
+      <TouchableOpacity style={styles.timeButton} onPress={() => setShowTimePicker(true)}>
         <Text style={styles.timeText}>
-          {reminderTime.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-          })}
+          {reminderTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </TouchableOpacity>
 
       {showTimePicker && (
         <DateTimePicker
-          testID="timePicker"
           value={reminderTime}
           mode="time"
-          display="default"
-          onChange={(event, date) => {
+          is24Hour={false}
+          onChange={(e, date) => {
             setShowTimePicker(false)
             if (date) setReminderTime(date)
           }}
         />
       )}
 
-      <TouchableOpacity
-        style={[styles.nextButton, loading && styles.nextButtonLoading]}
-        onPress={handleNext}
+      <TouchableOpacity 
+        style={[styles.nextButton, loading && styles.nextButtonLoading]} 
+        onPress={handleNext} 
         disabled={loading}
       >
-        <Text style={styles.nextButtonText}>
-          {loading ? 'Saving...' : 'Complete Setup'}
-        </Text>
+        <Text style={styles.nextButtonText}>{loading ? 'Saving...' : 'Complete Setup'}</Text>
       </TouchableOpacity>
     </View>
   )
 
   const renderStep3 = () => (
     <View style={styles.stepContainer}>
-      <View style={styles.successIcon}>
-        <Text style={styles.successEmoji}>✅</Text>
-      </View>
-
-      <Text style={styles.stepTitle}>You're all set!</Text>
-      <Text style={styles.stepSubtitle}>
-        Your first reminder is scheduled for{'\n'}
-        {injectionDay.charAt(0).toUpperCase() + injectionDay.slice(1)} at{' '}
-        {reminderTime.toLocaleTimeString('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        })}
-      </Text>
-
+      <Text style={styles.successEmoji}>✨</Text>
+      <Text style={styles.stepTitle}>Perfect!</Text>
+      <Text style={styles.stepSubtitle}>Adi is so excited to meet you.</Text>
       <TouchableOpacity style={styles.nextButton} onPress={handleDone}>
-        <Text style={styles.nextButtonText}>Let's Go!</Text>
+        <Text style={styles.nextButtonText}>Start Journey</Text>
       </TouchableOpacity>
     </View>
   )
@@ -167,16 +136,10 @@ export default function OnboardingScreen({ navigation, route }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Welcome to Shotchi!</Text>
-        {step < 3 && (
-          <View style={styles.progressContainer}>
-            <View style={[styles.progressDot, step >= 1 && styles.progressDotActive]} />
-            <View style={[styles.progressDot, step >= 2 && styles.progressDotActive]} />
-          </View>
-        )}
+        <Text style={styles.title}>Shotchi</Text>
+        {step < 3 && <Text style={styles.stepIndicator}>Step {step} of 2</Text>}
       </View>
-
-      <ScrollView style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         {step === 1 && renderStep1()}
         {step === 2 && renderStep2()}
         {step === 3 && renderStep3()}
@@ -186,117 +149,22 @@ export default function OnboardingScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#7BAF8E',
-    marginBottom: 20,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  progressDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#ddd',
-  },
-  progressDotActive: {
-    backgroundColor: '#7BAF8E',
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  stepContainer: {
-    flex: 1,
-    alignItems: 'center',
-    paddingTop: 40,
-  },
-  stepTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  stepSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 40,
-  },
-  daysContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
-    marginBottom: 40,
-  },
-  dayButton: {
-    width: 45,
-    height: 45,
-    borderRadius: 22.5,
-    backgroundColor: 'white',
-    borderWidth: 2,
-    borderColor: '#ddd',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dayButtonSelected: {
-    backgroundColor: '#7BAF8E',
-    borderColor: '#7BAF8E',
-  },
-  dayText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  dayTextSelected: {
-    color: 'white',
-  },
-  timeButton: {
-    backgroundColor: 'white',
-    paddingHorizontal: 40,
-    paddingVertical: 20,
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: '#7BAF8E',
-    marginBottom: 40,
-  },
-  timeText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  nextButton: {
-    backgroundColor: '#7BAF8E',
-    paddingHorizontal: 60,
-    paddingVertical: 15,
-    borderRadius: 30,
-  },
-  nextButtonLoading: {
-    opacity: 0.7,
-  },
-  nextButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  successIcon: {
-    marginBottom: 30,
-  },
-  successEmoji: {
-    fontSize: 80,
-  },
+  container: { flex: 1, backgroundColor: 'white' },
+  header: { paddingTop: 80, alignItems: 'center' },
+  title: { fontSize: 32, fontWeight: 'bold', color: '#7BAF8E' },
+  stepIndicator: { marginTop: 10, color: '#999', fontWeight: '600' },
+  content: { padding: 40, alignItems: 'center' },
+  stepContainer: { width: '100%', alignItems: 'center' },
+  stepTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+  stepSubtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 40 },
+  daysContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 40 },
+  dayButton: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#f5f5f5', justifyContent: 'center', alignItems: 'center' },
+  dayButtonSelected: { backgroundColor: '#7BAF8E' },
+  dayText: { fontWeight: 'bold' },
+  dayTextSelected: { color: 'white' },
+  timeButton: { padding: 20, backgroundColor: '#f5f5f5', borderRadius: 20, marginBottom: 40 },
+  timeText: { fontSize: 32, fontWeight: 'bold' },
+  nextButton: { backgroundColor: '#7BAF8E', paddingHorizontal: 60, paddingVertical: 18, borderRadius: 35 },
+  nextButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  successEmoji: { fontSize: 80, marginBottom: 20 }
 })

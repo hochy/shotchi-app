@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, StyleSheet, ScrollView } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native'
 import { getInjections } from '../lib/database'
 
 export default function HistoryScreen({ navigation }) {
@@ -19,14 +19,14 @@ export default function HistoryScreen({ navigation }) {
     try {
       const injectionsData = await getInjections()
       setInjections(injectionsData)
-      
+
       // Calculate stats
       const total = injectionsData.length
-      const onTimeCount = injectionsData.filter(injection => 
+      const onTimeCount = injectionsData.filter(injection =>
         injection.logged_at && injection.scheduled_for === injection.logged_at.split('T')[0]
       ).length
       const onTimeRate = total > 0 ? Math.round((onTimeCount / total) * 100) : 0
-      
+
       setStats({
         total,
         onTimeRate: `${onTimeRate}%`,
@@ -44,8 +44,14 @@ export default function HistoryScreen({ navigation }) {
       <View key={monthName} style={styles.monthSection}>
         <Text style={styles.monthTitle}>{monthName}</Text>
         <View style={styles.datesContainer}>
-          {injections.map(injection => (
-            <View key={injection.id} style={styles.dateRow}>
+          {injections.map((injection, index) => (
+            <View
+              key={injection.id}
+              style={[
+                styles.dateRow,
+                index === injections.length - 1 && styles.dateRowLast
+              ]}
+            >
               <Text style={styles.dateText}>{injection.date}</Text>
               <Text style={styles.timeText}>{injection.time}</Text>
               <Text style={styles.statusText}>{injection.status}</Text>
@@ -54,6 +60,36 @@ export default function HistoryScreen({ navigation }) {
         </View>
       </View>
     )
+  }
+
+  const renderMonthGroups = () => {
+    const monthGroups = {}
+
+    // Group injections by month
+    injections.forEach(injection => {
+      const month = new Date(injection.scheduled_for).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long'
+      })
+      if (!monthGroups[month]) {
+        monthGroups[month] = []
+      }
+      monthGroups[month].push(injection)
+    })
+
+    // Sort months chronologically
+    const sortedMonths = Object.keys(monthGroups).sort((a, b) => {
+      const monthA = new Date(a)
+      const monthB = new Date(b)
+      return monthB - monthA
+    })
+
+    return sortedMonths.map(month => {
+      const monthInjections = monthGroups[month].sort(
+        (a, b) => new Date(b.scheduled_for) - new Date(a.scheduled_for)
+      )
+      return renderMonth(month, monthInjections)
+    })
   }
 
   if (loading) {
@@ -103,38 +139,6 @@ export default function HistoryScreen({ navigation }) {
       </ScrollView>
     </View>
   )
-
-  const renderMonthGroups = () => {
-    const monthGroups = {}
-    
-    // Group injections by month
-    injections.forEach(injection => {
-      const month = new Date(injection.scheduled_for).toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long' 
-      })
-      
-      if (!monthGroups[month]) {
-        monthGroups[month] = []
-      }
-      
-      monthGroups[month].push(injection)
-    })
-    
-    // Sort months chronologically
-    const sortedMonths = Object.keys(monthGroups).sort((a, b) => {
-      const monthA = new Date(a)
-      const monthB = new Date(b)
-      return monthB - monthA
-    })
-    
-    return sortedMonths.map(month => {
-      const monthInjections = monthGroups[month].sort((a, b) => 
-        new Date(b.scheduled_for) - new Date(a.scheduled_for)
-      )
-      return renderMonth(month, monthInjections)
-    })
-  }
 }
 
 const styles = StyleSheet.create({
@@ -216,7 +220,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  dateRow:last-child: {
+  dateRowLast: {
     borderBottomWidth: 0,
   },
   dateText: {

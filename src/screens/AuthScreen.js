@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native'
 import { supabase } from '../lib/supabase'
 
-export default function AuthScreen({ navigation }) {
+export default function AuthScreen({ navigation, onSkip }) {
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -21,7 +21,6 @@ export default function AuthScreen({ navigation }) {
     }
 
     setLoading(true)
-
     try {
       if (isLogin) {
         // Login
@@ -38,7 +37,6 @@ export default function AuthScreen({ navigation }) {
         })
         if (error) throw error
       }
-      
       // Navigate will happen via auth state change in App.js
     } catch (error) {
       Alert.alert('Error', error.message || 'Authentication failed')
@@ -48,11 +46,10 @@ export default function AuthScreen({ navigation }) {
   }
 
   const handleSkip = () => {
-    // Navigate to main app without auth
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Home' }],
-    })
+    // Use local data mode without auth
+    if (onSkip) {
+      onSkip()
+    }
   }
 
   return (
@@ -105,8 +102,8 @@ export default function AuthScreen({ navigation }) {
             </>
           )}
 
-          <TouchableOpacity 
-            style={styles.button} 
+          <TouchableOpacity
+            style={styles.button}
             onPress={handleSubmit}
             disabled={loading}
           >

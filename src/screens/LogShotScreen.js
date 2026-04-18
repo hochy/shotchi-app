@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
-import { logInjection } from '../lib/database'
+import { useInjections } from '../hooks/useInjections'
+import * as Haptics from 'expo-haptics'
 
 export default function LogShotScreen({ navigation }) {
+  const { logInjection } = useInjections()
   const [date, setDate] = useState(new Date())
   const [time, setTime] = useState(new Date())
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -14,24 +16,35 @@ export default function LogShotScreen({ navigation }) {
   const handleConfirm = async () => {
     try {
       setLoading(true)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
       
-      // Combine date and time
       const scheduledDate = new Date(date)
       scheduledDate.setHours(time.getHours(), time.getMinutes(), 0, 0)
       
       const formattedDate = scheduledDate.toISOString().split('T')[0]
       
-      // Save to Supabase
-      const success = await logInjection(formattedDate, note || null)
+      // Save via context so state updates everywhere
+      const result = await logInjection({ 
+        scheduledFor: formattedDate, 
+        note: note || null 
+      })
       
-      if (success) {
+      if (result && result.error === 'ALREADY_LOGGED') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+        Alert.alert('Already Logged', 'An injection for this date has already been recorded.')
+        return
+      }
+
+      if (result) {
         navigation.goBack()
       } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
         Alert.alert('Error', 'Failed to log injection')
       }
     } catch (error) {
       console.error('Error logging shot:', error)
-      Alert.alert('Error', 'Failed to log injection')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      Alert.alert('Error', 'An error occurred while logging')
     } finally {
       setLoading(false)
     }
@@ -59,7 +72,6 @@ export default function LogShotScreen({ navigation }) {
       </View>
 
       <View style={styles.content}>
-        {/* Date */}
         <Text style={styles.label}>Date</Text>
         <TouchableOpacity 
           style={styles.input} 
@@ -79,7 +91,6 @@ export default function LogShotScreen({ navigation }) {
           />
         )}
 
-        {/* Time */}
         <Text style={styles.label}>Time</Text>
         <TouchableOpacity 
           style={styles.input} 
@@ -99,7 +110,6 @@ export default function LogShotScreen({ navigation }) {
           />
         )}
 
-        {/* Notes */}
         <Text style={styles.label}>Notes (optional)</Text>
         <TextInput
           style={styles.notesInput}
@@ -109,7 +119,6 @@ export default function LogShotScreen({ navigation }) {
           multiline
         />
 
-        {/* Confirm button */}
         <TouchableOpacity 
           style={[styles.confirmButton, loading && styles.confirmButtonLoading]} 
           onPress={handleConfirm}
@@ -125,73 +134,51 @@ export default function LogShotScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 40,
+    paddingTop: 60,
     paddingBottom: 20,
+    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
+    borderBottomColor: '#eee',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  close: {
-    fontSize: 20,
-    color: '#666',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
+  title: { fontSize: 24, fontWeight: 'bold' },
+  close: { fontSize: 24, color: '#666' },
+  content: { flex: 1, padding: 20 },
+  label: { fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#333' },
   input: {
     backgroundColor: 'white',
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 8,
+    borderRadius: 12,
     paddingHorizontal: 15,
-    paddingVertical: 12,
+    paddingVertical: 14,
     marginBottom: 20,
   },
-  inputText: {
-    fontSize: 16,
-    color: '#333',
-  },
+  inputText: { fontSize: 16 },
   notesInput: {
     backgroundColor: 'white',
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    height: 100,
+    borderRadius: 12,
+    padding: 15,
+    height: 120,
     textAlignVertical: 'top',
     marginBottom: 30,
   },
   confirmButton: {
     backgroundColor: '#7BAF8E',
-    paddingHorizontal: 40,
-    paddingVertical: 15,
-    borderRadius: 30,
-    alignSelf: 'center',
+    paddingVertical: 18,
+    borderRadius: 35,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  confirmButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
+  confirmButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
 })

@@ -1,12 +1,16 @@
-import React from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native'
+import React, { useEffect, useMemo } from 'react'
+import { View, Text, TouchableOpacity, StyleSheet, Image, Dimensions, Alert } from 'react-native'
+import { MotiView, AnimatePresence } from 'moti'
+import * as Haptics from 'expo-haptics'
 import { useInjections } from '../hooks/useInjections'
 
-// Asset imports - easy to replace by swapping files in assets/ folder
+// Asset imports
 import adiHappy from '../assets/character/adi-happy.png'
 import adiNeutral from '../assets/character/adi-neutral.png'
 import adiSad from '../assets/character/adi-sad.png'
 import adiWaiting from '../assets/character/adi-waiting.png'
+
+const { width } = Dimensions.get('window')
 
 export default function HomeScreen({ navigation }) {
   const { streaks, characterState, loading, logInjection } = useInjections()
@@ -19,28 +23,51 @@ export default function HomeScreen({ navigation }) {
     waiting: adiWaiting,
   }
 
+  // Mood-based background colors
+  const bgColor = useMemo(() => {
+    switch (characterState) {
+      case 'happy': return '#E8F5E9' // Light green
+      case 'sad': return '#E3F2FD' // Light blue/grey
+      case 'neutral': return '#FFF8E1' // Light amber
+      case 'waiting': return '#F3E5F5' // Light purple
+      default: return '#F5F5F5'
+    }
+  }, [characterState])
+
   const handleLogShot = async () => {
-    const today = new Date().toISOString().split('T')[0]
-    const success = await logInjection(today)
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     
-    if (success) {
-      // Success feedback
+    const today = new Date().toISOString().split('T')[0]
+    const result = await logInjection({ scheduledFor: today })
+    
+    if (result && result.error === 'ALREADY_LOGGED') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+      Alert.alert('Already Logged', 'You have already logged an injection for this week! Adi is well-fed.')
+      return
+    }
+
+    if (result) {
       console.log('Injection logged successfully')
-      // Navigation happens in LogShot screen
     } else {
-      console.error('Failed to log injection')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      Alert.alert('Error', 'Failed to log injection. Please try again.')
     }
   }
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <Text>Loading...</Text>
+      <View style={[styles.container, { backgroundColor: '#F5F5F5' }]}>
+        <MotiView
+          from={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          style={styles.loadingContainer}
+        >
+          <Text style={styles.loadingText}>Loading Adi...</Text>
+        </MotiView>
       </View>
     )
   }
 
-  // Format next due date
   const nextDueDate = streaks.nextDue 
     ? new Date(streaks.nextDue).toLocaleDateString('en-US', { 
         weekday: 'long', 
@@ -49,41 +76,94 @@ export default function HomeScreen({ navigation }) {
       })
     : 'No due date'
 
-  // Status message based on character state
   const getStatusMessage = () => {
     switch (characterState) {
-      case 'happy':
-        return 'Great job! Keep it up!'
-      case 'neutral':
-        return `Time for your shot on ${nextDueDate}`
-      case 'sad':
-        return `Overdue! Shot on ${nextDueDate}`
-      case 'waiting':
-        return 'Ready for your first shot?'
-      default:
-        return 'You\'re on day 1!'
+      case 'happy': return 'Great job! Keep it up!'
+      case 'neutral': return `Time for your shot on ${nextDueDate}`
+      case 'sad': return `Overdue! Shot on ${nextDueDate}`
+      case 'waiting': return 'Ready for your first shot?'
+      default: return 'How are you today?'
     }
   }
 
   return (
-    <View style={styles.container}>
+    <MotiView 
+      animate={{ backgroundColor: bgColor }}
+      transition={{ type: 'timing', duration: 1000 }}
+      style={styles.container}
+    >
       {/* Top bar */}
       <View style={styles.header}>
         <Text style={styles.title}>Shotchi</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+        <TouchableOpacity 
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+            navigation.navigate('Settings')
+          }}
+        >
           <Text style={styles.settings}>⚙️</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Character display */}
+      {/* Character display with Animations */}
       <View style={styles.characterContainer}>
-        <Image source={characterAssets[characterState]} style={styles.characterImage} />
+        <AnimatePresence exitBeforeEnter>
+          <MotiView
+            key={characterState}
+            from={{ opacity: 0, scale: 0.8, translateY: 20 }}
+            animate={{ opacity: 1, scale: 1, translateY: 0 }}
+            exit={{ opacity: 0, scale: 0.8, translateY: -20 }}
+            transition={{ type: 'spring', damping: 15 }}
+            style={styles.characterWrapper}
+          >
+            {/* Idle Animation (Floating/Breathing) */}
+            <MotiView
+              from={{ translateY: 0 }}
+              animate={{ translateY: characterState === 'happy' ? -15 : -8 }}
+              transition={{
+                type: 'timing',
+                duration: characterState === 'happy' ? 800 : 2000,
+                loop: true,
+                repeatReverse: true,
+              }}
+            >
+              <Image 
+                source={characterAssets[characterState]} 
+                style={[
+                  styles.characterImage,
+                  characterState === 'happy' && styles.happyImage
+                ]} 
+              />
+              
+              {/* Shadow animation */}
+              <MotiView 
+                from={{ scale: 1, opacity: 0.2 }}
+                animate={{ 
+                  scale: characterState === 'happy' ? 0.7 : 0.85, 
+                  opacity: characterState === 'happy' ? 0.1 : 0.15 
+                }}
+                transition={{
+                  type: 'timing',
+                  duration: characterState === 'happy' ? 800 : 2000,
+                  loop: true,
+                  repeatReverse: true,
+                }}
+                style={styles.shadow}
+              />
+            </MotiView>
+          </MotiView>
+        </AnimatePresence>
       </View>
 
       {/* Status message */}
-      <View style={styles.statusContainer}>
+      <MotiView 
+        from={{ opacity: 0, translateY: 10 }}
+        animate={{ opacity: 1, translateY: 0 }}
+        key={getStatusMessage()}
+        style={styles.statusContainer}
+      >
         <Text style={styles.statusText}>{getStatusMessage()}</Text>
-      </View>
+      </MotiView>
 
       {/* Streak info */}
       <View style={styles.streakContainer}>
@@ -97,33 +177,63 @@ export default function HomeScreen({ navigation }) {
       </View>
 
       {/* Log Shot CTA */}
-      <TouchableOpacity style={styles.logButton} onPress={handleLogShot}>
-        <Text style={styles.logButtonText}>LOG SHOT</Text>
+      <TouchableOpacity 
+        style={styles.logButton} 
+        onPress={handleLogShot}
+        activeOpacity={0.7}
+      >
+        <MotiView
+          from={{ scale: 1 }}
+          animate={{ scale: characterState === 'neutral' || characterState === 'sad' ? 1.05 : 1 }}
+          transition={{
+            type: 'timing',
+            duration: 1000,
+            loop: true,
+            repeatReverse: true,
+          }}
+          style={styles.logButtonInner}
+        >
+          <Text style={styles.logButtonText}>LOG SHOT</Text>
+        </MotiView>
       </TouchableOpacity>
 
       {/* Navigation */}
       <View style={styles.navContainer}>
-        <TouchableOpacity onPress={() => navigation.navigate('History')}>
+        <TouchableOpacity 
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+            navigation.navigate('History')
+          }}
+        >
           <Text style={styles.navText}>History 📊</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </MotiView>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 18,
+    color: '#7BAF8E',
+    fontWeight: '600',
   },
   header: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 40,
+    paddingTop: 60,
     paddingBottom: 10,
   },
   title: {
@@ -138,20 +248,39 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    width: '100%',
+  },
+  characterWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   characterImage: {
-    width: 200,
-    height: 200,
-    marginBottom: 20,
+    width: 220,
+    height: 220,
+    resizeMode: 'contain',
+  },
+  happyImage: {
+    // Add any specific style for happy state if needed
+  },
+  shadow: {
+    width: 100,
+    height: 15,
+    backgroundColor: '#000',
+    borderRadius: 50,
+    alignSelf: 'center',
+    marginTop: -10,
+    zIndex: -1,
   },
   statusContainer: {
     alignItems: 'center',
+    paddingHorizontal: 20,
     marginBottom: 10,
   },
   statusText: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#333',
+    textAlign: 'center',
   },
   streakContainer: {
     alignItems: 'center',
@@ -160,6 +289,7 @@ const styles = StyleSheet.create({
   streakText: {
     fontSize: 18,
     color: '#666',
+    fontWeight: '600',
   },
   bestStreakText: {
     fontSize: 14,
@@ -174,23 +304,31 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   logButton: {
-    backgroundColor: '#7BAF8E',
-    paddingHorizontal: 40,
-    paddingVertical: 15,
-    borderRadius: 30,
     marginBottom: 20,
+  },
+  logButtonInner: {
+    backgroundColor: '#7BAF8E',
+    paddingHorizontal: 50,
+    paddingVertical: 18,
+    borderRadius: 35,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
   },
   logButtonText: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
   },
   navContainer: {
     flexDirection: 'row',
-    marginBottom: 20,
+    marginBottom: 30,
   },
   navText: {
     fontSize: 16,
     color: '#666',
+    fontWeight: '500',
   },
-})
+  })
