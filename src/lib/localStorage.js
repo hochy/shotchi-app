@@ -4,13 +4,25 @@ const STORAGE_KEYS = {
   PROFILE: '@shotchi:profile',
   INJECTIONS: '@shotchi:injections',
   STREAKS: '@shotchi:streaks',
+  WEIGHTS: '@shotchi:weights',
+  SIDE_EFFECTS: '@shotchi:side_effects',
 }
 
 // Default profile for local mode
 const DEFAULT_PROFILE = {
   id: 'local-user',
   injection_day: 'monday',
-  injection_time: '09:00',
+  reminder_time: '09:00',
+  character_type: 'blob',
+  character_color: '#7BAF8E',
+  has_completed_onboarding: false,
+  last_milestone_celebrated: 0,
+  preferred_drug: 'Semaglutide (Wegovy)',
+  preferred_dosage: 0.25,
+  doses_on_hand: 0,
+  refill_threshold: 1,
+  health_sync_enabled: false,
+  last_health_sync: null,
   created_at: new Date().toISOString(),
 }
 
@@ -18,7 +30,7 @@ const DEFAULT_PROFILE = {
 const DEFAULT_STREAKS = {
   current_streak: 0,
   longest_streak: 0,
-  next_due: null,
+  next_scheduled_date: new Date().toISOString().split('T')[0],
 }
 
 // Profile operations
@@ -34,10 +46,10 @@ export const getLocalProfile = async () => {
 
 export const updateLocalProfile = async (updates) => {
   try {
-    const current = await getLocalProfile()
-    const updated = { ...current, ...updates }
-    await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updated))
-    return updated
+    const profile = await getLocalProfile()
+    const updatedProfile = { ...profile, ...updates, updated_at: new Date().toISOString() }
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updatedProfile))
+    return updatedProfile
   } catch (error) {
     console.error('Error updating local profile:', error)
     return null
@@ -48,7 +60,8 @@ export const updateLocalProfile = async (updates) => {
 export const getLocalInjections = async () => {
   try {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.INJECTIONS)
-    return data ? JSON.parse(data) : []
+    const injections = data ? JSON.parse(data) : []
+    return injections.sort((a, b) => new Date(b.scheduled_for) - new Date(a.scheduled_for))
   } catch (error) {
     console.error('Error reading local injections:', error)
     return []
@@ -62,6 +75,7 @@ export const addLocalInjection = async (injection) => {
       id: `local-${Date.now()}`,
       ...injection,
       injection_site: injection.injection_site || null,
+      photo_url: injection.photo_url || null,
       created_at: new Date().toISOString(),
     }
     injections.push(newInjection)
@@ -112,34 +126,32 @@ export const getLocalStreaks = async () => {
   }
 }
 
-export const updateLocalStreaks = async (currentStreak, longestStreak, nextDue) => {
+export const updateLocalStreaks = async (updates) => {
   try {
-    const streaks = { current_streak: currentStreak, longest_streak: longestStreak, next_due: nextDue }
-    await AsyncStorage.setItem(STORAGE_KEYS.STREAKS, JSON.stringify(streaks))
-    return streaks
+    const streaks = await getLocalStreaks()
+    const updated = { ...streaks, ...updates, updated_at: new Date().toISOString() }
+    await AsyncStorage.setItem(STORAGE_KEYS.STREAKS, JSON.stringify(updated))
+    return updated
   } catch (error) {
     console.error('Error updating local streaks:', error)
     return null
   }
 }
 
-// Clear all local data
-export const clearLocalData = async () => {
+// Weight operations
+export const getLocalWeights = async () => {
   try {
-    await AsyncStorage.multiRemove([
-      STORAGE_KEYS.PROFILE,
-      STORAGE_KEYS.INJECTIONS,
-      STORAGE_KEYS.STREAKS,
-      STORAGE_KEYS.WEIGHTS,
-      STORAGE_KEYS.SIDE_EFFECTS,
-    ])
-    return true
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.WEIGHTS)
+    return data ? JSON.parse(data) : []
   } catch (error) {
-    console.error('Error clearing local data:', error)
-    return false
+    console.error('Error reading local weights:', error)
+    return []
   }
 }
-t weights = await getLocalWeights()
+
+export const addLocalWeight = async (weightEntry) => {
+  try {
+    const weights = await getLocalWeights()
     const newWeight = {
       id: `local-w-${Date.now()}`,
       ...weightEntry,
@@ -154,21 +166,18 @@ t weights = await getLocalWeights()
   }
 }
 
-// Clear all local data
-export const clearLocalData = async () => {
+// Side Effect operations
+export const getLocalSideEffects = async () => {
   try {
-    await AsyncStorage.multiRemove([
-      STORAGE_KEYS.PROFILE,
-      STORAGE_KEYS.INJECTIONS,
-      STORAGE_KEYS.STREAKS,
-    ])
-    return true
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.SIDE_EFFECTS)
+    return data ? JSON.parse(data) : []
   } catch (error) {
-    console.error('Error clearing local data:', error)
-    return false
+    console.error('Error reading local side effects:', error)
+    return []
   }
 }
 
+export const addLocalSideEffect = async (sideEffect) => {
   try {
     const effects = await getLocalSideEffects()
     const newEffect = {
@@ -192,6 +201,8 @@ export const clearLocalData = async () => {
       STORAGE_KEYS.PROFILE,
       STORAGE_KEYS.INJECTIONS,
       STORAGE_KEYS.STREAKS,
+      STORAGE_KEYS.WEIGHTS,
+      STORAGE_KEYS.SIDE_EFFECTS,
     ])
     return true
   } catch (error) {

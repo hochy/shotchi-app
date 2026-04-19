@@ -180,7 +180,7 @@ export const logSideEffect = async (symptom, severity, notes = null) => {
   return data
 }
 
-export const logInjection = async ({ scheduledFor, note = null, injectionSite = null, drugName = null, dosage = null }) => {
+export const logInjection = async ({ scheduledFor, note = null, injectionSite = null, drugName = null, dosage = null, photoUrl = null }) => {
   if (await isLocalMode()) {
     const newInjection = {
       scheduled_for: scheduledFor,
@@ -188,6 +188,7 @@ export const logInjection = async ({ scheduledFor, note = null, injectionSite = 
       injection_site: injectionSite,
       drug_name: drugName,
       dosage,
+      photo_url: photoUrl,
       logged_at: new Date().toISOString(),
     }
     return localStorage.addLocalInjection(newInjection)
@@ -205,6 +206,7 @@ export const logInjection = async ({ scheduledFor, note = null, injectionSite = 
       injection_site: injectionSite,
       drug_name: drugName,
       dosage,
+      photo_url: photoUrl,
       logged_at: new Date().toISOString()
     })
     .select()

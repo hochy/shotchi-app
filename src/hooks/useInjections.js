@@ -4,6 +4,7 @@ export const useInjections = () => {
   const {
     injections,
     weightEntries,
+    sideEffects,
     streaks,
     characterState,
     loading,
@@ -15,6 +16,7 @@ export const useInjections = () => {
   return {
     injections,
     weightEntries,
+    sideEffects,
     streaks,
     characterState,
     loading,

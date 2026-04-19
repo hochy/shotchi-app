@@ -51,7 +51,7 @@ export const calculateCurrentLevel = (injections) => {
  * @param {Array} injections - List of injection objects
  * @returns {Object} Chart data for react-native-chart-kit
  */
-export const getTimelineData = (injections) => {
+export const getTimelineData = (injections = []) => {
   if (!injections || injections.length === 0) return null
 
   const now = new Date()

@@ -5,7 +5,9 @@ import * as Haptics from 'expo-haptics'
 import { useInjections } from '../hooks/useInjections'
 import { useSettings } from '../hooks/useSettings'
 import CelebrationModal from '../components/CelebrationModal'
+import SpeechBubble from '../components/SpeechBubble'
 import { calculateCurrentLevel } from '../lib/medicationLevels'
+import { getAdiMessage } from '../lib/adiMessages'
 
 // Asset imports
 import adiHappy from '../assets/character/adi-happy.png'
@@ -16,15 +18,30 @@ import adiWaiting from '../assets/character/adi-waiting.png'
 const { width } = Dimensions.get('window')
 
 export default function HomeScreen({ navigation }) {
-  const { injections, streaks, characterState, loading, logWeight } = useInjections()
+  const { injections, sideEffects, streaks, characterState, loading, logWeight } = useInjections()
   const { settings, updateSettings } = useSettings()
   const [showCelebration, setShowCelebration] = useState(false)
   const [milestoneReached, setMilestoneReached] = useState(0)
+  const [adiMessage, setAdiMessage] = useState('')
 
   // Medication Level Calculation
   const medLevel = useMemo(() => {
     return calculateCurrentLevel(injections)
   }, [injections])
+
+  // Update Adi's message when state changes
+  useEffect(() => {
+    if (!loading) {
+      const msg = getAdiMessage({ streaks, characterState, settings, injections, sideEffects })
+      setAdiMessage(msg)
+    }
+  }, [loading, characterState, streaks.current, sideEffects.length])
+
+  const handleCycleMessage = () => {
+    Haptics.selectionAsync()
+    const msg = getAdiMessage({ streaks, characterState, settings, injections, sideEffects })
+    setAdiMessage(msg)
+  }
 
   // Check for milestones on load or when streaks update
   useEffect(() => {
@@ -144,7 +161,7 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Medication Level (New Feature) */}
+      {/* Medication Level */}
       <TouchableOpacity 
         style={styles.medLevelContainer}
         onPress={() => navigation.navigate('MedicationTimeline')}
@@ -157,7 +174,7 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.inventoryBadge}>
             <Text style={[
               styles.inventoryText,
-              settings.dosesOnHand <= settings.refillThreshold && { color: '#FF5252' }
+              settings.dosesOnHand <= settings.refillThreshold && settings.dosesOnHand > 0 && { color: '#FF5252' }
             ]}>
               {settings.dosesOnHand} {settings.dosesOnHand === 1 ? 'dose' : 'doses'} left
             </Text>
@@ -172,51 +189,53 @@ export default function HomeScreen({ navigation }) {
         </View>
       </TouchableOpacity>
 
-      {/* Character display with Animations */}
+      {/* Character display with Animations & Speech */}
       <View style={styles.characterContainer}>
-        <AnimatePresence exitBeforeEnter>
-          <MotiView
-            key={characterState}
-            from={{ opacity: 0, scale: 0.8, translateY: 20 }}
-            animate={{ opacity: 1, scale: 1, translateY: 0 }}
-            exit={{ opacity: 0, scale: 0.8, translateY: -20 }}
-            transition={{ type: 'spring', damping: 15 }}
-            style={styles.characterWrapper}
-          >
-            {/* Idle Animation (Floating/Breathing) */}
+        {adiMessage ? <SpeechBubble message={adiMessage} themeColor={settings.characterColor} /> : null}
+        
+        <TouchableOpacity activeOpacity={1} onPress={handleCycleMessage}>
+          <AnimatePresence exitBeforeEnter>
             <MotiView
-              from={{ translateY: 0 }}
-              animate={{ translateY: characterState === 'happy' ? -15 : -8 }}
-              transition={{
-                type: 'timing',
-                duration: characterState === 'happy' ? 800 : 2000,
-                loop: true,
-                repeatReverse: true,
-              }}
+              key={characterState}
+              from={{ opacity: 0, scale: 0.8, translateY: 20 }}
+              animate={{ opacity: 1, scale: 1, translateY: 0 }}
+              exit={{ opacity: 0, scale: 0.8, translateY: -20 }}
+              transition={{ type: 'spring', damping: 15 }}
+              style={styles.characterWrapper}
             >
-              <Image 
-                source={characterAssets[characterState]} 
-                style={styles.characterImage} 
-              />
-              
-              {/* Shadow animation (Always black/grey for realism) */}
-              <MotiView 
-                from={{ scale: 1, opacity: 0.2 }}
-                animate={{ 
-                  scale: characterState === 'happy' ? 0.7 : 0.85, 
-                  opacity: 0.15 
-                }}
+              <MotiView
+                from={{ translateY: 0 }}
+                animate={{ translateY: characterState === 'happy' ? -15 : -8 }}
                 transition={{
                   type: 'timing',
                   duration: characterState === 'happy' ? 800 : 2000,
                   loop: true,
                   repeatReverse: true,
                 }}
-                style={styles.shadow}
-              />
+              >
+                <Image 
+                  source={characterAssets[characterState]} 
+                  style={styles.characterImage} 
+                />
+                
+                <MotiView 
+                  from={{ scale: 1, opacity: 0.2 }}
+                  animate={{ 
+                    scale: characterState === 'happy' ? 0.7 : 0.85, 
+                    opacity: 0.15 
+                  }}
+                  transition={{
+                    type: 'timing',
+                    duration: characterState === 'happy' ? 800 : 2000,
+                    loop: true,
+                    repeatReverse: true,
+                  }}
+                  style={styles.shadow}
+                />
+              </MotiView>
             </MotiView>
-          </MotiView>
-        </AnimatePresence>
+          </AnimatePresence>
+        </TouchableOpacity>
       </View>
 
       {/* Status message */}
@@ -240,7 +259,7 @@ export default function HomeScreen({ navigation }) {
         <Text style={styles.dueText}>Next shot: {nextDueDate}</Text>
       </View>
 
-      {/* Log Shot CTA (Primary Action - Matches Theme Color) */}
+      {/* Log Shot CTA */}
       <TouchableOpacity 
         style={styles.logButton} 
         onPress={handleLogShot}
@@ -358,10 +377,9 @@ const styles = StyleSheet.create({
     color: '#666',
     textTransform: 'uppercase',
   },
-  medLevelValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+  medLevelSubtitle: {
+    fontSize: 12,
+    color: '#999',
   },
   inventoryBadge: {
     backgroundColor: '#f5f5f5',
@@ -379,22 +397,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
     borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 8,
   },
   progressBarFill: {
     height: '100%',
     borderRadius: 4,
-  },
-  medLevelSubtitle: {
-    fontSize: 12,
-    color: '#999',
-    textAlign: 'center',
   },
   characterContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
+    paddingTop: 20,
   },
   characterWrapper: {
     alignItems: 'center',
@@ -468,18 +481,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 60,
     alignItems: 'center',
-    gap: 20,
+    gap: 15,
   },
   navButton: {
-    padding: 10,
+    padding: 8,
   },
   navSeparator: {
     width: 1,
-    height: 20,
+    height: 15,
     backgroundColor: '#ddd',
   },
   navText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
     fontWeight: '500',
   },

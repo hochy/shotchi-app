@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import * as database from '../lib/database'
 import { supabase } from '../lib/supabase'
 import * as NotificationService from '../lib/notifications'
+import { HealthService } from '../lib/healthService'
 
 const AppStateContext = createContext()
 
@@ -9,6 +10,7 @@ export const AppStateProvider = ({ children }) => {
   const [session, setSession] = useState(null)
   const [injections, setInjections] = useState([])
   const [weightEntries, setWeightEntries] = useState([])
+  const [sideEffects, setSideEffects] = useState([])
   const [settings, setSettings] = useState({
     injectionDay: 'monday',
     reminderTime: '09:00',
@@ -19,7 +21,11 @@ export const AppStateProvider = ({ children }) => {
     hasCompletedOnboarding: false,
     lastMilestoneCelebrated: 0,
     preferredDrug: 'Semaglutide (Wegovy)',
-    preferredDosage: 0.25
+    preferredDosage: 0.25,
+    dosesOnHand: 0,
+    refillThreshold: 1,
+    healthSyncEnabled: false,
+    lastHealthSync: null
   })
   const [streaks, setStreaks] = useState({ current: 0, longest: 0, nextDue: null })
   const [characterState, setCharacterState] = useState('waiting')
@@ -35,13 +41,15 @@ export const AppStateProvider = ({ children }) => {
         injectionsData,
         streaksData,
         stateData,
-        weightsData
+        weightsData,
+        sideEffectsData
       ] = await Promise.all([
         database.getProfile(),
         database.getInjections(),
         database.getStreaks(),
         database.getCharacterState(),
-        database.getWeightEntries()
+        database.getWeightEntries(),
+        database.getSideEffects()
       ])
 
       if (profileData) {
@@ -57,12 +65,15 @@ export const AppStateProvider = ({ children }) => {
           preferredDrug: profileData.preferred_drug || 'Semaglutide (Wegovy)',
           preferredDosage: profileData.preferred_dosage || 0.25,
           dosesOnHand: profileData.doses_on_hand || 0,
-          refillThreshold: profileData.refill_threshold || 1
+          refillThreshold: profileData.refill_threshold || 1,
+          healthSyncEnabled: profileData.health_sync_enabled || false,
+          lastHealthSync: profileData.last_health_sync
         })
       }
 
       setInjections(injectionsData || [])
       setWeightEntries(weightsData || [])
+      setSideEffects(sideEffectsData || [])
       setStreaks(streaksData || { current: 0, longest: 0, nextDue: null })
       setCharacterState(stateData || 'neutral')
     } catch (error) {
@@ -82,6 +93,18 @@ export const AppStateProvider = ({ children }) => {
 
   const logWeight = async (weight, unit) => {
     const result = await database.logWeight(weight, unit)
+    if (result) {
+      await loadAllData()
+      // Trigger Health Sync if enabled
+      if (settings.healthSyncEnabled) {
+        await HealthService.syncWeight(weight)
+      }
+    }
+    return result
+  }
+
+  const logSideEffect = async (symptom, severity, notes) => {
+    const result = await database.logSideEffect(symptom, severity, notes)
     if (result) await loadAllData()
     return result
   }
@@ -119,13 +142,27 @@ export const AppStateProvider = ({ children }) => {
     
     if (updates.preferredDosage !== undefined || updates.preferred_dosage !== undefined)
       dbUpdates.preferred_dosage = updates.preferredDosage ?? updates.preferred_dosage
+
+    if (updates.dosesOnHand !== undefined || updates.doses_on_hand !== undefined)
+      dbUpdates.doses_on_hand = updates.dosesOnHand ?? updates.doses_on_hand
+
+    if (updates.refillThreshold !== undefined || updates.refill_threshold !== undefined)
+      dbUpdates.refill_threshold = updates.refillThreshold ?? updates.refill_threshold
     
+    if (updates.healthSyncEnabled !== undefined || updates.health_sync_enabled !== undefined)
+      dbUpdates.health_sync_enabled = updates.healthSyncEnabled ?? updates.health_sync_enabled
+
     if (updates.timezone !== undefined) dbUpdates.timezone = updates.timezone
 
     const result = await database.updateProfile(dbUpdates)
     if (result) {
       await loadAllData()
       
+      // If health sync just enabled, request permissions
+      if (updates.healthSyncEnabled === true) {
+        await HealthService.requestPermissions();
+      }
+
       // Notification rescheduling logic
       if (dbUpdates.injection_day || dbUpdates.reminder_time || dbUpdates.notifications_enabled === true) {
         const profile = await database.getProfile()
@@ -171,6 +208,7 @@ export const AppStateProvider = ({ children }) => {
       else {
         setInjections([])
         setWeightEntries([])
+        setSideEffects([])
         setStreaks({ current: 0, longest: 0, nextDue: null })
         setCharacterState('waiting')
         setLoading(false)
@@ -208,22 +246,6 @@ export const AppStateProvider = ({ children }) => {
 
 export const useAppState = () => {
   const context = useContext(AppStateContext)
-  if (!context) {
-    throw new Error('useAppState must be used within an AppStateProvider')
-  }
-  return context
-}
-onst context = useContext(AppStateContext)
-  if (!context) {
-    throw new Error('useAppState must be used within an AppStateProvider')
-  }
-  return context
-}
- be used within an AppStateProvider')
-  }
-  return context
-}
-onst context = useContext(AppStateContext)
   if (!context) {
     throw new Error('useAppState must be used within an AppStateProvider')
   }

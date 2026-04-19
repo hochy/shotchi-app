@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert, Image } from 'react-native'
 import { LineChart, PieChart } from 'react-native-chart-kit'
 import { useInjections } from '../hooks/useInjections'
 import { useSettings } from '../hooks/useSettings'
@@ -124,14 +124,22 @@ export default function HistoryScreen({ navigation }) {
       animate={{ opacity: 1, translateX: 0 }}
       style={[styles.historyCard, { borderLeftColor: settings.characterColor }]}
     >
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardDate}>{format(parseISO(item.scheduled_for), 'EEEE, MMM d')}</Text>
-        <Text style={[styles.cardStatus, { color: settings.characterColor }]}>On Time</Text>
-      </View>
-      <View style={styles.cardFooter}>
-        <Text style={styles.cardDrug}>💊 {item.drug_name || 'Unspecified'}</Text>
-        <Text style={styles.cardSite}>📍 {item.injection_site?.replace('_', ' ') || 'Not specified'}</Text>
-        {item.note && <Text style={styles.cardNote}>" {item.note} "</Text>}
+      <View style={styles.cardMain}>
+        <View style={{ flex: 1 }}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardDate}>{format(parseISO(item.scheduled_for), 'EEEE, MMM d')}</Text>
+            <Text style={[styles.cardStatus, { color: settings.characterColor }]}>On Time</Text>
+          </View>
+          <View style={styles.cardFooter}>
+            <Text style={styles.cardDrug}>💊 {item.drug_name || 'Unspecified'}</Text>
+            <Text style={styles.cardSite}>📍 {item.injection_site?.replace('_', ' ') || 'Not specified'}</Text>
+            {item.note && <Text style={styles.cardNote}>" {item.note} "</Text>}
+          </View>
+        </View>
+        
+        {item.photo_url && (
+          <Image source={{ uri: item.photo_url }} style={styles.cardThumbnail} />
+        )}
       </View>
     </MotiView>
   )
@@ -310,6 +318,17 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 12,
     borderLeftWidth: 4,
+  },
+  cardMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  cardThumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#eee',
   },
   symptomCard: {
     backgroundColor: 'white',

@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Platform } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useSettings } from '../hooks/useSettings'
 import { useAppState } from '../context/AppStateContext'
+import { HealthService } from '../lib/healthService'
 import * as Haptics from 'expo-haptics'
 
 export default function SettingsScreen({ navigation }) {
@@ -84,6 +85,15 @@ export default function SettingsScreen({ navigation }) {
     }
   }
 
+  const handleManualSync = async () => {
+    Haptics.selectionAsync()
+    const result = await HealthService.performFullSync()
+    if (result.success) {
+      await handleUpdate({ lastHealthSync: result.timestamp })
+      Alert.alert('Sync Complete', 'Your health data has been successfully synchronized.')
+    }
+  }
+
   const onTimeChange = (event, selectedDate) => {
     setShowTimePicker(false)
     if (selectedDate) {
@@ -92,6 +102,8 @@ export default function SettingsScreen({ navigation }) {
       handleUpdate({ reminderTime: `${hours}:${minutes}` })
     }
   }
+
+  const isHealthSupported = HealthService.isSupported()
 
   if (loading) {
     return (
@@ -268,6 +280,42 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Health Integration</Text>
+          <View style={styles.row}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.rowLabel}>Sync with Health Apps</Text>
+              <Text style={styles.rowSubtitle}>
+                {Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit / Health Connect'}
+              </Text>
+            </View>
+            <Switch 
+              value={settings.healthSyncEnabled}
+              onValueChange={(val) => handleUpdate({ healthSyncEnabled: val })}
+              trackColor={{ true: '#7BAF8E' }}
+            />
+          </View>
+
+          {settings.healthSyncEnabled && (
+            <View style={styles.syncContainer}>
+              <Text style={styles.syncStatus}>
+                Last synced: {settings.lastHealthSync ? new Date(settings.lastHealthSync).toLocaleString() : 'Never'}
+              </Text>
+              <TouchableOpacity onPress={handleManualSync}>
+                <Text style={[styles.syncLink, { color: settings.characterColor }]}>Sync Now</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {!isHealthSupported && (
+            <View style={styles.warningBox}>
+              <Text style={styles.warningText}>
+                ⚠️ Native health sync is not available in Expo Go. Use a development build to enable this feature.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notifications</Text>
           
           <View style={styles.row}>
@@ -413,6 +461,11 @@ const styles = StyleSheet.create({
   },
   counterButtonText: { fontSize: 20, fontWeight: 'bold', color: '#333' },
   counterValue: { paddingHorizontal: 15, fontSize: 16, fontWeight: 'bold', color: '#333' },
+  syncContainer: { marginTop: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  syncStatus: { fontSize: 12, color: '#999' },
+  syncLink: { fontSize: 12, fontWeight: 'bold' },
+  warningBox: { marginTop: 15, padding: 12, backgroundColor: '#FFF9C4', borderRadius: 10 },
+  warningText: { fontSize: 11, color: '#F57F17', lineHeight: 16 },
   devButton: { padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 12 },
   devButtonText: { color: '#666', fontSize: 14, fontWeight: '600' },
   dangerButton: { padding: 15, alignItems: 'center' },
