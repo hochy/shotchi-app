@@ -10,7 +10,7 @@ import { format, parseISO, startOfMonth, eachMonthOfInterval, subMonths } from '
 const { width } = Dimensions.get('window')
 
 export default function HistoryScreen({ navigation }) {
-  const { injections, streaks, loading } = useInjections()
+  const { injections, weightEntries, streaks, loading } = useInjections()
   const { settings } = useSettings()
 
   const chartConfig = useMemo(() => ({
@@ -27,11 +27,11 @@ export default function HistoryScreen({ navigation }) {
   }), [settings.characterColor]);
 
   const stats = useMemo(() => {
-    if (!injections.length) return { onTime: 0, siteData: [] }
+    if (!injections.length && !weightEntries.length) return { onTime: 0, siteData: [], currentWeight: '--' }
     
     // Calculate on-time rate
     const onTimeCount = injections.filter(i => i.logged_at && i.scheduled_for === i.logged_at.split('T')[0]).length
-    const onTimeRate = Math.round((onTimeCount / injections.length) * 100)
+    const onTimeRate = injections.length > 0 ? Math.round((onTimeCount / injections.length) * 100) : 0
 
     // Calculate site distribution
     const siteCounts = injections.reduce((acc, curr) => {
@@ -50,8 +50,10 @@ export default function HistoryScreen({ navigation }) {
       legendFontSize: 12
     }))
 
-    return { onTime: onTimeRate, siteData }
-  }, [injections, settings.characterColor])
+    const currentWeight = weightEntries.length > 0 ? weightEntries[0].weight : '--'
+
+    return { onTime: onTimeRate, siteData, currentWeight }
+  }, [injections, weightEntries, settings.characterColor])
 
   // Prep line chart data (last 6 months)
   const chartData = useMemo(() => {
@@ -72,6 +74,18 @@ export default function HistoryScreen({ navigation }) {
 
     return { labels, datasets: [{ data }] }
   }, [injections])
+
+  // Prep weight chart data
+  const weightChartData = useMemo(() => {
+    if (weightEntries.length < 2) return null
+    
+    // Take last 7 entries and reverse for chronological order
+    const recentWeights = [...weightEntries].slice(0, 7).reverse()
+    const labels = recentWeights.map(w => format(parseISO(w.logged_at), 'MM/dd'))
+    const data = recentWeights.map(w => parseFloat(w.weight))
+
+    return { labels, datasets: [{ data }] }
+  }, [weightEntries])
 
   if (loading) {
     return (
@@ -114,7 +128,7 @@ export default function HistoryScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 60 }]}>
         {/* Quick Stats */}
         <View style={styles.statsGrid}>
           <View style={styles.statBox}>
@@ -123,20 +137,38 @@ export default function HistoryScreen({ navigation }) {
             <Text style={styles.statLabel}>Streak</Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statEmoji}>✅</Text>
-            <Text style={styles.statValue}>{stats.onTime}%</Text>
-            <Text style={styles.statLabel}>Adherence</Text>
+            <Text style={styles.statEmoji}>⚖️</Text>
+            <Text style={styles.statValue}>{stats.currentWeight}</Text>
+            <Text style={styles.statLabel}>Weight</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={styles.statEmoji}>💉</Text>
             <Text style={styles.statValue}>{injections.length}</Text>
-            <Text style={styles.statLabel}>Total Shots</Text>
+            <Text style={styles.statLabel}>Shots</Text>
           </View>
         </View>
 
-        {/* Charts */}
+        {/* Weight Trend Chart */}
+        {weightChartData && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Weight Journey (lbs)</Text>
+            <LineChart
+              data={weightChartData}
+              width={width - 40}
+              height={180}
+              chartConfig={{
+                ...chartConfig,
+                color: (opacity = 1) => `rgba(123, 175, 142, ${opacity})`,
+              }}
+              bezier
+              style={styles.chart}
+            />
+          </View>
+        )}
+
+        {/* Injection Chart */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Activity</Text>
+          <Text style={styles.sectionTitle}>Injection Activity</Text>
           <LineChart
             data={chartData}
             width={width - 40}
@@ -193,7 +225,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, fontWeight: 'bold' },
   close: { fontSize: 24, color: '#666' },
-  scrollContent: { padding: 20, paddingBottom: 60 },
+  scrollContent: { padding: 20 },
   statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 25 },
   statBox: {
     flex: 1,
@@ -207,7 +239,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   statEmoji: { fontSize: 20, marginBottom: 5 },
-  statValue: { fontSize: 22, fontWeight: 'bold', color: '#333' },
+  statValue: { fontSize: 20, fontWeight: 'bold', color: '#333' },
   statLabel: { fontSize: 10, color: '#999', textTransform: 'uppercase', fontWeight: 'bold' },
   section: { marginBottom: 30 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 15, color: '#333' },

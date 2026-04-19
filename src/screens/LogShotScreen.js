@@ -8,15 +8,17 @@ import * as Haptics from 'expo-haptics'
 
 export default function LogShotScreen({ navigation }) {
   const insets = useSafeAreaInsets()
-  const { logInjection } = useInjections()
+  const { logInjection, logWeight } = useInjections()
   const { settings } = useSettings()
   const [date, setDate] = useState(new Date())
   const [time, setTime] = useState(new Date())
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showTimePicker, setShowTimePicker] = useState(false)
   const [note, setNote] = useState('')
+  const [weight, setWeight] = useState('')
   const [injectionSite, setInjectionSite] = useState(null)
   const [drugName, setDrugName] = useState(settings.preferredDrug || 'Semaglutide (Wegovy)')
+  const [dosage, setDosage] = useState(settings.preferredDosage || 0.25)
   const [loading, setLoading] = useState(false)
 
   // Sync with default medication from settings
@@ -24,7 +26,10 @@ export default function LogShotScreen({ navigation }) {
     if (settings.preferredDrug) {
       setDrugName(settings.preferredDrug)
     }
-  }, [settings.preferredDrug])
+    if (settings.preferredDosage) {
+      setDosage(settings.preferredDosage)
+    }
+  }, [settings.preferredDrug, settings.preferredDosage])
 
   const drugs = [
     { label: 'Semaglutide (Wegovy)', value: 'Semaglutide (Wegovy)' },
@@ -33,6 +38,8 @@ export default function LogShotScreen({ navigation }) {
     { label: 'Tirzepatide (Mounjaro)', value: 'Tirzepatide (Mounjaro)' },
     { label: 'Liraglutide (Saxenda)', value: 'Liraglutide (Saxenda)' },
   ]
+
+  const dosageOptions = [0.25, 0.5, 0.75, 1.0, 1.7, 2.0, 2.4, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0]
 
   const sites = [
     { label: 'L Thigh', value: 'left_thigh' },
@@ -58,9 +65,14 @@ export default function LogShotScreen({ navigation }) {
         scheduledFor: formattedDate, 
         note: note || null,
         injectionSite: injectionSite,
-        drugName: drugName
+        drugName: drugName,
+        dosage: dosage
       })
 
+      // Also log weight if provided
+      if (weight && !isNaN(parseFloat(weight))) {
+        await logWeight(parseFloat(weight), 'lbs')
+      }
       
       if (result && result.error === 'ALREADY_LOGGED') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
@@ -143,23 +155,58 @@ export default function LogShotScreen({ navigation }) {
           />
         )}
 
+        <Text style={styles.label}>Current Weight (optional)</Text>
+        <View style={styles.weightInputContainer}>
+          <TextInput
+            style={styles.weightInput}
+            placeholder="0.0"
+            keyboardType="decimal-pad"
+            value={weight}
+            onChangeText={setWeight}
+          />
+          <Text style={styles.weightUnit}>lbs</Text>
+        </View>
+
         <Text style={styles.label}>Medication</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.drugsScroll}>
-          <View style={styles.drugsContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollSelector}>
+          <View style={styles.chipContainer}>
             {drugs.map(drug => (
               <TouchableOpacity
                 key={drug.value}
                 style={[
-                  styles.drugChip,
-                  drugName === drug.value && [styles.drugChipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
+                  styles.chip,
+                  drugName === drug.value && [styles.chipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
                 ]}
                 onPress={() => setDrugName(drug.value)}
               >
                 <Text style={[
-                  styles.drugText,
-                  drugName === drug.value && styles.drugTextSelected
+                  styles.chipText,
+                  drugName === drug.value && styles.chipTextSelected
                 ]}>
                   {drug.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+
+        <Text style={styles.label}>Dosage (mg)</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollSelector}>
+          <View style={styles.chipContainer}>
+            {dosageOptions.map(opt => (
+              <TouchableOpacity
+                key={opt}
+                style={[
+                  styles.chip,
+                  dosage === opt && [styles.chipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
+                ]}
+                onPress={() => setDosage(opt)}
+              >
+                <Text style={[
+                  styles.chipText,
+                  dosage === opt && styles.chipTextSelected
+                ]}>
+                  {opt}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -172,14 +219,14 @@ export default function LogShotScreen({ navigation }) {
             <TouchableOpacity
               key={site.value}
               style={[
-                styles.siteChip,
-                injectionSite === site.value && [styles.siteChipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
+                styles.chip,
+                injectionSite === site.value && [styles.chipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
               ]}
               onPress={() => setInjectionSite(site.value)}
             >
               <Text style={[
-                styles.siteText,
-                injectionSite === site.value && styles.siteTextSelected
+                styles.chipText,
+                injectionSite === site.value && styles.chipTextSelected
               ]}>
                 {site.label}
               </Text>
@@ -241,21 +288,36 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   inputText: { fontSize: 16 },
-  sitesContainer: {
+  weightInputContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    paddingHorizontal: 15,
     marginBottom: 20,
   },
-  drugsScroll: {
+  weightInput: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  weightUnit: {
+    fontSize: 16,
+    color: '#999',
+    fontWeight: '600',
+  },
+  scrollSelector: {
     marginBottom: 20,
   },
-  drugsContainer: {
+  chipContainer: {
     flexDirection: 'row',
     gap: 10,
     paddingRight: 20,
   },
-  drugChip: {
+  chip: {
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 12,
@@ -263,35 +325,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
   },
-  drugChipSelected: {
-    // Background color handled dynamically
+  chipSelected: {
+    // Dynamic
   },
-  drugText: {
+  chipText: {
     fontSize: 14,
     color: '#666',
   },
-  drugTextSelected: {
+  chipTextSelected: {
     color: 'white',
     fontWeight: 'bold',
   },
-  siteChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  siteChipSelected: {
-    // Background color handled dynamically
-  },
-  siteText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  siteTextSelected: {
-    color: 'white',
-    fontWeight: 'bold',
+  sitesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 20,
   },
   notesInput: {
     backgroundColor: 'white',

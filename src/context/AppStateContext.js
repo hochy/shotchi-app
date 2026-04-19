@@ -8,6 +8,7 @@ const AppStateContext = createContext()
 export const AppStateProvider = ({ children }) => {
   const [session, setSession] = useState(null)
   const [injections, setInjections] = useState([])
+  const [weightEntries, setWeightEntries] = useState([])
   const [settings, setSettings] = useState({
     injectionDay: 'monday',
     reminderTime: '09:00',
@@ -17,7 +18,8 @@ export const AppStateProvider = ({ children }) => {
     characterColor: '#7BAF8E',
     hasCompletedOnboarding: false,
     lastMilestoneCelebrated: 0,
-    preferredDrug: 'Semaglutide (Wegovy)'
+    preferredDrug: 'Semaglutide (Wegovy)',
+    preferredDosage: 0.25
   })
   const [streaks, setStreaks] = useState({ current: 0, longest: 0, nextDue: null })
   const [characterState, setCharacterState] = useState('waiting')
@@ -32,12 +34,14 @@ export const AppStateProvider = ({ children }) => {
         profileData,
         injectionsData,
         streaksData,
-        stateData
+        stateData,
+        weightsData
       ] = await Promise.all([
         database.getProfile(),
         database.getInjections(),
         database.getStreaks(),
-        database.getCharacterState()
+        database.getCharacterState(),
+        database.getWeightEntries()
       ])
 
       if (profileData) {
@@ -50,11 +54,13 @@ export const AppStateProvider = ({ children }) => {
           characterColor: profileData.character_color,
           hasCompletedOnboarding: profileData.has_completed_onboarding,
           lastMilestoneCelebrated: profileData.last_milestone_celebrated || 0,
-          preferredDrug: profileData.preferred_drug || 'Semaglutide (Wegovy)'
+          preferredDrug: profileData.preferred_drug || 'Semaglutide (Wegovy)',
+          preferredDosage: profileData.preferred_dosage || 0.25
         })
       }
 
       setInjections(injectionsData || [])
+      setWeightEntries(weightsData || [])
       setStreaks(streaksData || { current: 0, longest: 0, nextDue: null })
       setCharacterState(stateData || 'neutral')
     } catch (error) {
@@ -68,6 +74,12 @@ export const AppStateProvider = ({ children }) => {
   // Mutations with automatic refresh
   const logInjection = async (data) => {
     const result = await database.logInjection(data)
+    if (result) await loadAllData()
+    return result
+  }
+
+  const logWeight = async (weight, unit) => {
+    const result = await database.logWeight(weight, unit)
     if (result) await loadAllData()
     return result
   }
@@ -102,6 +114,9 @@ export const AppStateProvider = ({ children }) => {
     
     if (updates.preferredDrug !== undefined || updates.preferred_drug !== undefined)
       dbUpdates.preferred_drug = updates.preferredDrug || updates.preferred_drug
+    
+    if (updates.preferredDosage !== undefined || updates.preferred_dosage !== undefined)
+      dbUpdates.preferred_dosage = updates.preferredDosage ?? updates.preferred_dosage
     
     if (updates.timezone !== undefined) dbUpdates.timezone = updates.timezone
 
@@ -153,6 +168,7 @@ export const AppStateProvider = ({ children }) => {
       if (session) loadAllData()
       else {
         setInjections([])
+        setWeightEntries([])
         setStreaks({ current: 0, longest: 0, nextDue: null })
         setCharacterState('waiting')
         setLoading(false)
@@ -165,6 +181,7 @@ export const AppStateProvider = ({ children }) => {
   const value = {
     session,
     injections,
+    weightEntries,
     settings,
     streaks,
     characterState,
@@ -172,6 +189,7 @@ export const AppStateProvider = ({ children }) => {
     refreshing,
     refresh: loadAllData,
     logInjection,
+    logWeight,
     updateSettings,
     deleteInjection,
     resetAllData

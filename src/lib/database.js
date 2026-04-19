@@ -71,13 +71,58 @@ export const getInjections = async () => {
   return data
 }
 
-export const logInjection = async ({ scheduledFor, note = null, injectionSite = null, drugName = null }) => {
+// Weight operations
+export const getWeightEntries = async () => {
+  if (await isLocalMode()) {
+    return localStorage.getLocalWeights()
+  }
+
+  const { data, error } = await supabase
+    .from('weight_entries')
+    .select('*')
+    .order('logged_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching weights:', error)
+    return []
+  }
+  return data
+}
+
+export const logWeight = async (weight, unit = 'lbs') => {
+  if (await isLocalMode()) {
+    return localStorage.addLocalWeight({ weight, unit, logged_at: new Date().toISOString() })
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase
+    .from('weight_entries')
+    .insert({
+      user_id: user.id,
+      weight,
+      unit,
+      logged_at: new Date().toISOString()
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error logging weight:', error)
+    return null
+  }
+  return data
+}
+
+export const logInjection = async ({ scheduledFor, note = null, injectionSite = null, drugName = null, dosage = null }) => {
   if (await isLocalMode()) {
     const newInjection = {
       scheduled_for: scheduledFor,
       note,
       injection_site: injectionSite,
       drug_name: drugName,
+      dosage,
       logged_at: new Date().toISOString(),
     }
     return localStorage.addLocalInjection(newInjection)
@@ -94,6 +139,7 @@ export const logInjection = async ({ scheduledFor, note = null, injectionSite = 
       note,
       injection_site: injectionSite,
       drug_name: drugName,
+      dosage,
       logged_at: new Date().toISOString()
     })
     .select()
@@ -165,12 +211,18 @@ export const clearAllInjections = async () => {
   }
 
   // Also reset last_injected_at on profile
-  await updateProfile({ last_injected_at: null, last_milestone_celebrated: 0 })
+  await updateProfile({ last_injected_at: null, last_milestone_celebrated: 0, preferred_dosage: 0.25 })
 
   // Reset streaks table
   await supabase
     .from('streaks')
     .update({ current_streak: 0, longest_streak: 0 })
+    .eq('user_id', user.id)
+
+  // Delete all weight entries
+  await supabase
+    .from('weight_entries')
+    .delete()
     .eq('user_id', user.id)
 
   return true

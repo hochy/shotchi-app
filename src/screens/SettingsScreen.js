@@ -36,6 +36,8 @@ export default function SettingsScreen({ navigation }) {
     'Liraglutide (Saxenda)',
   ]
 
+  const dosageOptions = [0.25, 0.5, 0.75, 1.0, 1.7, 2.0, 2.4, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0]
+
   // Convert "HH:MM" string to Date object for picker
   const getPickerDate = () => {
     const [hours, minutes] = (settings.reminderTime || '09:00').split(':').map(Number)
@@ -188,6 +190,29 @@ export default function SettingsScreen({ navigation }) {
                     settings.preferredDrug === drug && styles.drugTextSelected
                   ]}>
                     {drug}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+
+          <Text style={styles.label}>Default Dosage (mg)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.drugsScroll}>
+            <View style={styles.drugsContainer}>
+              {dosageOptions.map(opt => (
+                <TouchableOpacity
+                  key={opt}
+                  style={[
+                    styles.drugChip,
+                    settings.preferredDosage === opt && [styles.drugChipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
+                  ]}
+                  onPress={() => handleUpdate({ preferredDosage: opt })}
+                >
+                  <Text style={[
+                    styles.drugText,
+                    settings.preferredDosage === opt && styles.drugTextSelected
+                  ]}>
+                    {opt}
                   </Text>
                 </TouchableOpacity>
               ))}

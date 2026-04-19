@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics'
 import { useInjections } from '../hooks/useInjections'
 import { useSettings } from '../hooks/useSettings'
 import CelebrationModal from '../components/CelebrationModal'
+import { calculateCurrentLevel } from '../lib/medicationLevels'
 
 // Asset imports
 import adiHappy from '../assets/character/adi-happy.png'
@@ -15,10 +16,15 @@ import adiWaiting from '../assets/character/adi-waiting.png'
 const { width } = Dimensions.get('window')
 
 export default function HomeScreen({ navigation }) {
-  const { streaks, characterState, loading, logInjection } = useInjections()
+  const { injections, streaks, characterState, loading, logWeight } = useInjections()
   const { settings, updateSettings } = useSettings()
   const [showCelebration, setShowCelebration] = useState(false)
   const [milestoneReached, setMilestoneReached] = useState(0)
+
+  // Medication Level Calculation
+  const medLevel = useMemo(() => {
+    return calculateCurrentLevel(injections)
+  }, [injections])
 
   // Check for milestones on load or when streaks update
   useEffect(() => {
@@ -60,6 +66,31 @@ export default function HomeScreen({ navigation }) {
   const handleLogShot = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     navigation.navigate('LogShot')
+  }
+
+  const handleLogWeight = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    Alert.prompt(
+      "Log Weight",
+      "Enter your current weight in lbs:",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Log", 
+          onPress: async (value) => {
+            const weight = parseFloat(value)
+            if (!isNaN(weight)) {
+              await logWeight(weight, 'lbs')
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+              Alert.alert("Success", "Weight logged!")
+            } else {
+              Alert.alert("Error", "Please enter a valid number.")
+            }
+          } 
+        }
+      ],
+      "plain-text"
+    )
   }
 
   if (loading) {
@@ -112,6 +143,25 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.settings}>⚙️</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Medication Level (New Feature) */}
+      <TouchableOpacity 
+        style={styles.medLevelContainer}
+        onPress={() => navigation.navigate('MedicationTimeline')}
+      >
+        <View style={styles.medLevelHeader}>
+          <Text style={styles.medLevelTitle}>Medication Level</Text>
+          <Text style={styles.medLevelValue}>{medLevel.percentage}%</Text>
+        </View>
+        <View style={styles.progressBarBg}>
+          <MotiView 
+            animate={{ width: `${medLevel.percentage}%` }}
+            transition={{ type: 'timing', duration: 1500 }}
+            style={[styles.progressBarFill, { backgroundColor: settings.characterColor }]} 
+          />
+        </View>
+        <Text style={styles.medLevelSubtitle}>{medLevel.currentLevel} mg remaining • View Timeline ›</Text>
+      </TouchableOpacity>
 
       {/* Character display with Animations */}
       <View style={styles.characterContainer}>
@@ -209,8 +259,18 @@ export default function HomeScreen({ navigation }) {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
             navigation.navigate('History')
           }}
+          style={styles.navButton}
         >
           <Text style={styles.navText}>History 📊</Text>
+        </TouchableOpacity>
+        
+        <View style={styles.navSeparator} />
+        
+        <TouchableOpacity 
+          onPress={handleLogWeight}
+          style={styles.navButton}
+        >
+          <Text style={styles.navText}>Weight ⚖️</Text>
         </TouchableOpacity>
       </View>
 
@@ -253,6 +313,50 @@ const styles = StyleSheet.create({
   },
   settings: {
     fontSize: 24,
+  },
+  medLevelContainer: {
+    width: width - 40,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 15,
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  medLevelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  medLevelTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#666',
+    textTransform: 'uppercase',
+  },
+  medLevelValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  medLevelSubtitle: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'center',
   },
   characterContainer: {
     flex: 1,
@@ -331,6 +435,16 @@ const styles = StyleSheet.create({
   navContainer: {
     flexDirection: 'row',
     marginBottom: 60,
+    alignItems: 'center',
+    gap: 20,
+  },
+  navButton: {
+    padding: 10,
+  },
+  navSeparator: {
+    width: 1,
+    height: 20,
+    backgroundColor: '#ddd',
   },
   navText: {
     fontSize: 16,
