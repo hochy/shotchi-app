@@ -71,11 +71,13 @@ export const getInjections = async () => {
   return data
 }
 
-export const logInjection = async ({ scheduledFor, note = null }) => {
+export const logInjection = async ({ scheduledFor, note = null, injectionSite = null, drugName = null }) => {
   if (await isLocalMode()) {
     const newInjection = {
       scheduled_for: scheduledFor,
       note,
+      injection_site: injectionSite,
+      drug_name: drugName,
       logged_at: new Date().toISOString(),
     }
     return localStorage.addLocalInjection(newInjection)
@@ -90,6 +92,8 @@ export const logInjection = async ({ scheduledFor, note = null }) => {
       user_id: user.id,
       scheduled_for: scheduledFor,
       note,
+      injection_site: injectionSite,
+      drug_name: drugName,
       logged_at: new Date().toISOString()
     })
     .select()
@@ -139,6 +143,36 @@ export const deleteInjection = async (id) => {
     console.error('Error deleting injection:', error)
     return false
   }
+  return true
+}
+
+export const clearAllInjections = async () => {
+  if (await isLocalMode()) {
+    return localStorage.clearLocalData()
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return false
+
+  const { error } = await supabase
+    .from('injections')
+    .delete()
+    .eq('user_id', user.id)
+
+  if (error) {
+    console.error('Error clearing injections:', error)
+    return false
+  }
+
+  // Also reset last_injected_at on profile
+  await updateProfile({ last_injected_at: null, last_milestone_celebrated: 0 })
+
+  // Reset streaks table
+  await supabase
+    .from('streaks')
+    .update({ current_streak: 0, longest_streak: 0 })
+    .eq('user_id', user.id)
+
   return true
 }
 

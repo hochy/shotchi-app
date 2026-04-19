@@ -15,7 +15,9 @@ export const AppStateProvider = ({ children }) => {
     overdueEnabled: true,
     characterType: 'blob',
     characterColor: '#7BAF8E',
-    hasCompletedOnboarding: false
+    hasCompletedOnboarding: false,
+    lastMilestoneCelebrated: 0,
+    preferredDrug: 'Semaglutide (Wegovy)'
   })
   const [streaks, setStreaks] = useState({ current: 0, longest: 0, nextDue: null })
   const [characterState, setCharacterState] = useState('waiting')
@@ -46,7 +48,9 @@ export const AppStateProvider = ({ children }) => {
           overdueEnabled: profileData.overdue_enabled,
           characterType: profileData.character_type,
           characterColor: profileData.character_color,
-          hasCompletedOnboarding: profileData.has_completed_onboarding
+          hasCompletedOnboarding: profileData.has_completed_onboarding,
+          lastMilestoneCelebrated: profileData.last_milestone_celebrated || 0,
+          preferredDrug: profileData.preferred_drug || 'Semaglutide (Wegovy)'
         })
       }
 
@@ -69,20 +73,52 @@ export const AppStateProvider = ({ children }) => {
   }
 
   const updateSettings = async (updates) => {
-    const result = await database.updateProfile(updates)
+    // Strictly map to database column names (snake_case)
+    const dbUpdates = {}
+    
+    if (updates.injectionDay !== undefined || updates.injection_day !== undefined) 
+      dbUpdates.injection_day = updates.injectionDay || updates.injection_day
+    
+    if (updates.reminderTime !== undefined || updates.reminder_time !== undefined) 
+      dbUpdates.reminder_time = updates.reminderTime || updates.reminder_time
+    
+    if (updates.notificationsEnabled !== undefined || updates.notifications_enabled !== undefined) 
+      dbUpdates.notifications_enabled = updates.notificationsEnabled ?? updates.notifications_enabled
+    
+    if (updates.overdueEnabled !== undefined || updates.overdue_enabled !== undefined) 
+      dbUpdates.overdue_enabled = updates.overdueEnabled ?? updates.overdue_enabled
+    
+    if (updates.characterType !== undefined || updates.character_type !== undefined) 
+      dbUpdates.character_type = updates.characterType || updates.character_type
+    
+    if (updates.characterColor !== undefined || updates.character_color !== undefined) 
+      dbUpdates.character_color = updates.characterColor || updates.character_color
+    
+    if (updates.hasCompletedOnboarding !== undefined || updates.has_completed_onboarding !== undefined) 
+      dbUpdates.has_completed_onboarding = updates.hasCompletedOnboarding ?? updates.has_completed_onboarding
+    
+    if (updates.lastMilestoneCelebrated !== undefined || updates.last_milestone_celebrated !== undefined) 
+      dbUpdates.last_milestone_celebrated = updates.lastMilestoneCelebrated ?? updates.last_milestone_celebrated
+    
+    if (updates.preferredDrug !== undefined || updates.preferred_drug !== undefined)
+      dbUpdates.preferred_drug = updates.preferredDrug || updates.preferred_drug
+    
+    if (updates.timezone !== undefined) dbUpdates.timezone = updates.timezone
+
+    const result = await database.updateProfile(dbUpdates)
     if (result) {
       await loadAllData()
       
-      // If day or time changed, reschedule notifications
-      if (updates.injection_day || updates.reminder_time || updates.notifications_enabled === true) {
+      // Notification rescheduling logic
+      if (dbUpdates.injection_day || dbUpdates.reminder_time || dbUpdates.notifications_enabled === true) {
         const profile = await database.getProfile()
-        if (profile && (updates.notifications_enabled !== false && profile.notifications_enabled)) {
+        if (profile && (dbUpdates.notifications_enabled !== false && profile.notifications_enabled)) {
           await NotificationService.scheduleWeeklyReminder(
             profile.injection_day,
             profile.reminder_time
           )
         }
-      } else if (updates.notifications_enabled === false) {
+      } else if (dbUpdates.notifications_enabled === false) {
         await NotificationService.cancelAllScheduledNotifications()
       }
     }
@@ -91,6 +127,12 @@ export const AppStateProvider = ({ children }) => {
 
   const deleteInjection = async (id) => {
     const result = await database.deleteInjection(id)
+    if (result) await loadAllData()
+    return result
+  }
+
+  const resetAllData = async () => {
+    const result = await database.clearAllInjections()
     if (result) await loadAllData()
     return result
   }
@@ -131,7 +173,8 @@ export const AppStateProvider = ({ children }) => {
     refresh: loadAllData,
     logInjection,
     updateSettings,
-    deleteInjection
+    deleteInjection,
+    resetAllData
   }
 
   return (

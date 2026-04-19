@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Image, Dimensions, Alert } from 'react-native'
 import { MotiView, AnimatePresence } from 'moti'
 import * as Haptics from 'expo-haptics'
 import { useInjections } from '../hooks/useInjections'
+import { useSettings } from '../hooks/useSettings'
+import CelebrationModal from '../components/CelebrationModal'
 
 // Asset imports
 import adiHappy from '../assets/character/adi-happy.png'
@@ -14,6 +16,27 @@ const { width } = Dimensions.get('window')
 
 export default function HomeScreen({ navigation }) {
   const { streaks, characterState, loading, logInjection } = useInjections()
+  const { settings, updateSettings } = useSettings()
+  const [showCelebration, setShowCelebration] = useState(false)
+  const [milestoneReached, setMilestoneReached] = useState(0)
+
+  // Check for milestones on load or when streaks update
+  useEffect(() => {
+    if (streaks.current > 0) {
+      const milestones = [52, 26, 12, 4]
+      const currentMilestone = milestones.find(m => streaks.current >= m)
+      
+      if (currentMilestone && currentMilestone > (settings.lastMilestoneCelebrated || 0)) {
+        setMilestoneReached(currentMilestone)
+        setShowCelebration(true)
+      }
+    }
+  }, [streaks.current, settings.lastMilestoneCelebrated])
+
+  const handleDismissCelebration = async () => {
+    setShowCelebration(false)
+    await updateSettings({ lastMilestoneCelebrated: milestoneReached })
+  }
   
   // Character state to asset mapping
   const characterAssets = {
@@ -23,7 +46,7 @@ export default function HomeScreen({ navigation }) {
     waiting: adiWaiting,
   }
 
-  // Mood-based background colors
+  // Mood-based background colors (soft ambience)
   const bgColor = useMemo(() => {
     switch (characterState) {
       case 'happy': return '#E8F5E9' // Light green
@@ -34,24 +57,9 @@ export default function HomeScreen({ navigation }) {
     }
   }, [characterState])
 
-  const handleLogShot = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    
-    const today = new Date().toISOString().split('T')[0]
-    const result = await logInjection({ scheduledFor: today })
-    
-    if (result && result.error === 'ALREADY_LOGGED') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-      Alert.alert('Already Logged', 'You have already logged an injection for this week! Adi is well-fed.')
-      return
-    }
-
-    if (result) {
-      console.log('Injection logged successfully')
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-      Alert.alert('Error', 'Failed to log injection. Please try again.')
-    }
+  const handleLogShot = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    navigation.navigate('LogShot')
   }
 
   if (loading) {
@@ -94,7 +102,7 @@ export default function HomeScreen({ navigation }) {
     >
       {/* Top bar */}
       <View style={styles.header}>
-        <Text style={styles.title}>Shotchi</Text>
+        <Text style={[styles.title, { color: settings.characterColor }]}>Shotchi</Text>
         <TouchableOpacity 
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -129,18 +137,15 @@ export default function HomeScreen({ navigation }) {
             >
               <Image 
                 source={characterAssets[characterState]} 
-                style={[
-                  styles.characterImage,
-                  characterState === 'happy' && styles.happyImage
-                ]} 
+                style={styles.characterImage} 
               />
               
-              {/* Shadow animation */}
+              {/* Shadow animation (Always black/grey for realism) */}
               <MotiView 
                 from={{ scale: 1, opacity: 0.2 }}
                 animate={{ 
                   scale: characterState === 'happy' ? 0.7 : 0.85, 
-                  opacity: characterState === 'happy' ? 0.1 : 0.15 
+                  opacity: 0.15 
                 }}
                 transition={{
                   type: 'timing',
@@ -176,7 +181,7 @@ export default function HomeScreen({ navigation }) {
         <Text style={styles.dueText}>Next shot: {nextDueDate}</Text>
       </View>
 
-      {/* Log Shot CTA */}
+      {/* Log Shot CTA (Primary Action - Matches Theme Color) */}
       <TouchableOpacity 
         style={styles.logButton} 
         onPress={handleLogShot}
@@ -191,7 +196,7 @@ export default function HomeScreen({ navigation }) {
             loop: true,
             repeatReverse: true,
           }}
-          style={styles.logButtonInner}
+          style={[styles.logButtonInner, { backgroundColor: settings.characterColor }]}
         >
           <Text style={styles.logButtonText}>LOG SHOT</Text>
         </MotiView>
@@ -208,6 +213,12 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.navText}>History 📊</Text>
         </TouchableOpacity>
       </View>
+
+      <CelebrationModal
+        visible={showCelebration}
+        milestone={milestoneReached}
+        onDismiss={handleDismissCelebration}
+      />
     </MotiView>
   )
 }
@@ -239,7 +250,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#7BAF8E',
   },
   settings: {
     fontSize: 24,
@@ -258,9 +268,6 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     resizeMode: 'contain',
-  },
-  happyImage: {
-    // Add any specific style for happy state if needed
   },
   shadow: {
     width: 100,
@@ -307,7 +314,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logButtonInner: {
-    backgroundColor: '#7BAF8E',
     paddingHorizontal: 50,
     paddingVertical: 18,
     borderRadius: 35,
@@ -324,11 +330,11 @@ const styles = StyleSheet.create({
   },
   navContainer: {
     flexDirection: 'row',
-    marginBottom: 30,
+    marginBottom: 60,
   },
   navText: {
     fontSize: 16,
     color: '#666',
     fontWeight: '500',
   },
-  })
+})

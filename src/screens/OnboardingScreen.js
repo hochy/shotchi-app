@@ -9,6 +9,7 @@ export default function OnboardingScreen({ navigation }) {
   const [step, setStep] = useState(1)
   const [injectionDay, setInjectionDay] = useState('monday')
   const [reminderTime, setReminderTime] = useState(new Date())
+  const [preferredDrug, setPreferredDrug] = useState('Semaglutide (Wegovy)')
   const [showTimePicker, setShowTimePicker] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -22,11 +23,19 @@ export default function OnboardingScreen({ navigation }) {
     { label: 'Sun', value: 'sunday' },
   ]
 
+  const drugOptions = [
+    'Semaglutide (Wegovy)',
+    'Semaglutide (Ozempic)',
+    'Tirzepatide (Zepbound)',
+    'Tirzepatide (Mounjaro)',
+    'Liraglutide (Saxenda)',
+  ]
+
   const handleNext = async () => {
     Haptics.selectionAsync()
-    if (step === 1) {
-      setStep(2)
-    } else if (step === 2) {
+    if (step < 3) {
+      setStep(step + 1)
+    } else if (step === 3) {
       await saveSettings()
     }
   }
@@ -44,12 +53,13 @@ export default function OnboardingScreen({ navigation }) {
         injection_day: injectionDay,
         reminder_time: timeString,
         timezone: timezone,
+        preferred_drug: preferredDrug,
         has_completed_onboarding: true,
         notifications_enabled: true
       })
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-      setStep(3)
+      setStep(4)
     } catch (error) {
       console.error('Error saving settings:', error)
       alert('Failed to save settings. Please try again.')
@@ -60,8 +70,6 @@ export default function OnboardingScreen({ navigation }) {
 
   const handleDone = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    // No need to reset navigation manually, AppStateContext will detect hasCompletedOnboarding
-    // and AppNavigator will automatically switch to the main stack.
   }
 
   const renderStep1 = () => (
@@ -112,6 +120,31 @@ export default function OnboardingScreen({ navigation }) {
         />
       )}
 
+      <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+        <Text style={styles.nextButtonText}>Next</Text>
+      </TouchableOpacity>
+    </View>
+  )
+
+  const renderStepDrug = () => (
+    <View style={styles.stepContainer}>
+      <Text style={styles.stepTitle}>Which medication?</Text>
+      <Text style={styles.stepSubtitle}>We'll pre-select this for your logs.</Text>
+
+      <View style={styles.drugsList}>
+        {drugOptions.map(drug => (
+          <TouchableOpacity
+            key={drug}
+            style={[styles.drugOption, preferredDrug === drug && styles.drugOptionSelected]}
+            onPress={() => setPreferredDrug(drug)}
+          >
+            <Text style={[styles.drugOptionText, preferredDrug === drug && styles.drugOptionTextSelected]}>
+              {drug}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <TouchableOpacity 
         style={[styles.nextButton, loading && styles.nextButtonLoading]} 
         onPress={handleNext} 
@@ -122,7 +155,7 @@ export default function OnboardingScreen({ navigation }) {
     </View>
   )
 
-  const renderStep3 = () => (
+  const renderStep4 = () => (
     <View style={styles.stepContainer}>
       <Text style={styles.successEmoji}>✨</Text>
       <Text style={styles.stepTitle}>Perfect!</Text>
@@ -137,12 +170,13 @@ export default function OnboardingScreen({ navigation }) {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Shotchi</Text>
-        {step < 3 && <Text style={styles.stepIndicator}>Step {step} of 2</Text>}
+        {step < 4 && <Text style={styles.stepIndicator}>Step {step} of 3</Text>}
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         {step === 1 && renderStep1()}
         {step === 2 && renderStep2()}
-        {step === 3 && renderStep3()}
+        {step === 3 && renderStepDrug()}
+        {step === 4 && renderStep4()}
       </ScrollView>
     </View>
   )
@@ -153,7 +187,7 @@ const styles = StyleSheet.create({
   header: { paddingTop: 80, alignItems: 'center' },
   title: { fontSize: 32, fontWeight: 'bold', color: '#7BAF8E' },
   stepIndicator: { marginTop: 10, color: '#999', fontWeight: '600' },
-  content: { padding: 40, alignItems: 'center' },
+  content: { padding: 40, paddingBottom: 80, alignItems: 'center' },
   stepContainer: { width: '100%', alignItems: 'center' },
   stepTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
   stepSubtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 40 },
@@ -164,6 +198,11 @@ const styles = StyleSheet.create({
   dayTextSelected: { color: 'white' },
   timeButton: { padding: 20, backgroundColor: '#f5f5f5', borderRadius: 20, marginBottom: 40 },
   timeText: { fontSize: 32, fontWeight: 'bold' },
+  drugsList: { width: '100%', gap: 10, marginBottom: 40 },
+  drugOption: { padding: 15, borderRadius: 15, backgroundColor: '#f5f5f5', width: '100%', alignItems: 'center' },
+  drugOptionSelected: { backgroundColor: '#7BAF8E' },
+  drugOptionText: { fontSize: 16, fontWeight: '600', color: '#333' },
+  drugOptionTextSelected: { color: 'white' },
   nextButton: { backgroundColor: '#7BAF8E', paddingHorizontal: 60, paddingVertical: 18, borderRadius: 35 },
   nextButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
   successEmoji: { fontSize: 80, marginBottom: 20 }

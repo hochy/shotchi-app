@@ -2,10 +2,12 @@ import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useSettings } from '../hooks/useSettings'
+import { useAppState } from '../context/AppStateContext'
 import * as Haptics from 'expo-haptics'
 
 export default function SettingsScreen({ navigation }) {
   const { settings, loading, saving, updateSettings } = useSettings()
+  const { resetAllData } = useAppState()
   const [showTimePicker, setShowTimePicker] = useState(false)
 
   const injectionDays = [
@@ -16,6 +18,22 @@ export default function SettingsScreen({ navigation }) {
     { value: 'friday', label: 'Fri' },
     { value: 'saturday', label: 'Sat' },
     { value: 'sunday', label: 'Sun' },
+  ]
+
+  const characterColors = [
+    '#7BAF8E', // Original Green
+    '#7B8EAF', // Blue
+    '#AF7B9C', // Pink
+    '#AF9C7B', // Amber
+    '#7BAFAF', // Teal
+  ]
+
+  const drugOptions = [
+    'Semaglutide (Wegovy)',
+    'Semaglutide (Ozempic)',
+    'Tirzepatide (Zepbound)',
+    'Tirzepatide (Mounjaro)',
+    'Liraglutide (Saxenda)',
   ]
 
   // Convert "HH:MM" string to Date object for picker
@@ -34,10 +52,34 @@ export default function SettingsScreen({ navigation }) {
     ])
   }
 
+  const handleResetData = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+    Alert.alert(
+      'Reset All Data', 
+      'This will delete all your injection logs and reset your streaks. This cannot be undone. Are you sure?', 
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Reset Everything', 
+          style: 'destructive',
+          onPress: async () => {
+            const success = await resetAllData()
+            if (success) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+              Alert.alert('Success', 'All data has been cleared.')
+            }
+          }
+        },
+      ]
+    )
+  }
+
   const handleUpdate = async (updates) => {
     Haptics.selectionAsync()
     const success = await updateSettings(updates)
-    if (!success) Alert.alert('Error', 'Failed to update settings')
+    if (!success) {
+      Alert.alert('Error', 'Failed to update settings')
+    }
   }
 
   const onTimeChange = (event, selectedDate) => {
@@ -110,6 +152,50 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Adi's Look</Text>
+          <Text style={styles.label}>Character Color</Text>
+          <View style={styles.colorsContainer}>
+            {characterColors.map(color => (
+              <TouchableOpacity
+                key={color}
+                style={[
+                  styles.colorCircle,
+                  { backgroundColor: color },
+                  settings.characterColor === color && styles.colorCircleSelected
+                ]}
+                onPress={() => handleUpdate({ characterColor: color })}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Medication</Text>
+          <Text style={styles.label}>Default Medication</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.drugsScroll}>
+            <View style={styles.drugsContainer}>
+              {drugOptions.map(drug => (
+                <TouchableOpacity
+                  key={drug}
+                  style={[
+                    styles.drugChip,
+                    settings.preferredDrug === drug && [styles.drugChipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
+                  ]}
+                  onPress={() => handleUpdate({ preferredDrug: drug })}
+                >
+                  <Text style={[
+                    styles.drugText,
+                    settings.preferredDrug === drug && styles.drugTextSelected
+                  ]}>
+                    {drug}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notifications</Text>
           
           <View style={styles.row}>
@@ -129,6 +215,13 @@ export default function SettingsScreen({ navigation }) {
               trackColor={{ true: '#7BAF8E' }}
             />
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Developer Tools</Text>
+          <TouchableOpacity style={styles.devButton} onPress={handleResetData}>
+            <Text style={styles.devButtonText}>Reset All Injection Data</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
@@ -154,7 +247,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, fontWeight: 'bold' },
   close: { fontSize: 24, color: '#666' },
-  content: { padding: 20 },
+  content: { padding: 20, paddingBottom: 60 },
   section: {
     backgroundColor: 'white',
     borderRadius: 16,
@@ -168,6 +261,39 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 15, color: '#333' },
   label: { fontSize: 14, color: '#666', marginBottom: 10, fontWeight: '600' },
   daysContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  colorsContainer: { flexDirection: 'row', gap: 15, marginBottom: 10 },
+  drugsScroll: { marginBottom: 10 },
+  drugsContainer: { flexDirection: 'row', gap: 10, paddingRight: 20 },
+  drugChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  drugChipSelected: {
+    // Background color handled dynamically
+  },
+  drugText: {
+    fontSize: 13,
+    color: '#666',
+  },
+  drugTextSelected: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  colorCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorCircleSelected: {
+    borderColor: '#333',
+    transform: [{ scale: 1.1 }],
+  },
   dayButton: {
     width: 40,
     height: 40,
@@ -193,6 +319,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   rowLabel: { fontSize: 16, color: '#333' },
+  devButton: { padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 12 },
+  devButtonText: { color: '#666', fontSize: 14, fontWeight: '600' },
   dangerButton: { padding: 15, alignItems: 'center' },
   dangerButtonText: { color: '#FF5252', fontWeight: 'bold', fontSize: 16 },
 })

@@ -1,33 +1,66 @@
-import React, { useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native'
+import React, { useState, useEffect } from 'react'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useInjections } from '../hooks/useInjections'
+import { useSettings } from '../hooks/useSettings'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics'
 
 export default function LogShotScreen({ navigation }) {
+  const insets = useSafeAreaInsets()
   const { logInjection } = useInjections()
+  const { settings } = useSettings()
   const [date, setDate] = useState(new Date())
   const [time, setTime] = useState(new Date())
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showTimePicker, setShowTimePicker] = useState(false)
   const [note, setNote] = useState('')
+  const [injectionSite, setInjectionSite] = useState(null)
+  const [drugName, setDrugName] = useState(settings.preferredDrug || 'Semaglutide (Wegovy)')
   const [loading, setLoading] = useState(false)
+
+  // Sync with default medication from settings
+  useEffect(() => {
+    if (settings.preferredDrug) {
+      setDrugName(settings.preferredDrug)
+    }
+  }, [settings.preferredDrug])
+
+  const drugs = [
+    { label: 'Semaglutide (Wegovy)', value: 'Semaglutide (Wegovy)' },
+    { label: 'Semaglutide (Ozempic)', value: 'Semaglutide (Ozempic)' },
+    { label: 'Tirzepatide (Zepbound)', value: 'Tirzepatide (Zepbound)' },
+    { label: 'Tirzepatide (Mounjaro)', value: 'Tirzepatide (Mounjaro)' },
+    { label: 'Liraglutide (Saxenda)', value: 'Liraglutide (Saxenda)' },
+  ]
+
+  const sites = [
+    { label: 'L Thigh', value: 'left_thigh' },
+    { label: 'R Thigh', value: 'right_thigh' },
+    { label: 'L Stomach', value: 'left_stomach' },
+    { label: 'R Stomach', value: 'right_stomach' },
+    { label: 'L Arm', value: 'left_arm' },
+    { label: 'R Arm', value: 'right_arm' },
+  ]
 
   const handleConfirm = async () => {
     try {
       setLoading(true)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-      
+
       const scheduledDate = new Date(date)
       scheduledDate.setHours(time.getHours(), time.getMinutes(), 0, 0)
-      
+
       const formattedDate = scheduledDate.toISOString().split('T')[0]
-      
+
       // Save via context so state updates everywhere
       const result = await logInjection({ 
         scheduledFor: formattedDate, 
-        note: note || null 
+        note: note || null,
+        injectionSite: injectionSite,
+        drugName: drugName
       })
+
       
       if (result && result.error === 'ALREADY_LOGGED') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
@@ -71,7 +104,7 @@ export default function LogShotScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
         <Text style={styles.label}>Date</Text>
         <TouchableOpacity 
           style={styles.input} 
@@ -110,6 +143,50 @@ export default function LogShotScreen({ navigation }) {
           />
         )}
 
+        <Text style={styles.label}>Medication</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.drugsScroll}>
+          <View style={styles.drugsContainer}>
+            {drugs.map(drug => (
+              <TouchableOpacity
+                key={drug.value}
+                style={[
+                  styles.drugChip,
+                  drugName === drug.value && [styles.drugChipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
+                ]}
+                onPress={() => setDrugName(drug.value)}
+              >
+                <Text style={[
+                  styles.drugText,
+                  drugName === drug.value && styles.drugTextSelected
+                ]}>
+                  {drug.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+
+        <Text style={styles.label}>Injection Site (optional)</Text>
+        <View style={styles.sitesContainer}>
+          {sites.map(site => (
+            <TouchableOpacity
+              key={site.value}
+              style={[
+                styles.siteChip,
+                injectionSite === site.value && [styles.siteChipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
+              ]}
+              onPress={() => setInjectionSite(site.value)}
+            >
+              <Text style={[
+                styles.siteText,
+                injectionSite === site.value && styles.siteTextSelected
+              ]}>
+                {site.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <Text style={styles.label}>Notes (optional)</Text>
         <TextInput
           style={styles.notesInput}
@@ -120,7 +197,11 @@ export default function LogShotScreen({ navigation }) {
         />
 
         <TouchableOpacity 
-          style={[styles.confirmButton, loading && styles.confirmButtonLoading]} 
+          style={[
+            styles.confirmButton, 
+            { backgroundColor: settings.characterColor },
+            loading && styles.confirmButtonLoading
+          ]} 
           onPress={handleConfirm}
           disabled={loading}
         >
@@ -128,7 +209,7 @@ export default function LogShotScreen({ navigation }) {
             {loading ? 'SAVING...' : 'CONFIRM'}
           </Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </View>
   )
 }
@@ -148,7 +229,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, fontWeight: 'bold' },
   close: { fontSize: 24, color: '#666' },
-  content: { flex: 1, padding: 20 },
+  content: { padding: 20 },
   label: { fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#333' },
   input: {
     backgroundColor: 'white',
@@ -160,6 +241,58 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   inputText: { fontSize: 16 },
+  sitesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 20,
+  },
+  drugsScroll: {
+    marginBottom: 20,
+  },
+  drugsContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingRight: 20,
+  },
+  drugChip: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  drugChipSelected: {
+    // Background color handled dynamically
+  },
+  drugText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  drugTextSelected: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  siteChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  siteChipSelected: {
+    // Background color handled dynamically
+  },
+  siteText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  siteTextSelected: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
   notesInput: {
     backgroundColor: 'white',
     borderWidth: 1,
@@ -171,7 +304,6 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   confirmButton: {
-    backgroundColor: '#7BAF8E',
     paddingVertical: 18,
     borderRadius: 35,
     alignItems: 'center',
@@ -181,4 +313,5 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   confirmButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  confirmButtonLoading: { opacity: 0.7 },
 })

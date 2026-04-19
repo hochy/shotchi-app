@@ -61,6 +61,7 @@ export const addLocalInjection = async (injection) => {
     const newInjection = {
       id: `local-${Date.now()}`,
       ...injection,
+      injection_site: injection.injection_site || null,
       created_at: new Date().toISOString(),
     }
     injections.push(newInjection)
