@@ -1,17 +1,33 @@
 import React, { useMemo } from 'react'
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert } from 'react-native'
 import { LineChart, PieChart } from 'react-native-chart-kit'
 import { useInjections } from '../hooks/useInjections'
 import { useSettings } from '../hooks/useSettings'
 import { MotiView } from 'moti'
 import * as Haptics from 'expo-haptics'
 import { format, parseISO, startOfMonth, eachMonthOfInterval, subMonths } from 'date-fns'
+import { generateDoctorReport } from '../lib/pdfGenerator'
 
 const { width } = Dimensions.get('window')
 
 export default function HistoryScreen({ navigation }) {
-  const { injections, weightEntries, streaks, loading } = useInjections()
+  const { injections, weightEntries, sideEffects, streaks, loading } = useInjections()
   const { settings } = useSettings()
+
+  const handleExport = async () => {
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      await generateDoctorReport({
+        profile: settings,
+        injections: injections,
+        weights: weightEntries,
+        sideEffects: sideEffects
+      })
+    } catch (error) {
+      console.error('Export Error:', error)
+      Alert.alert('Export Error', 'Failed to generate PDF report.')
+    }
+  }
 
   const chartConfig = useMemo(() => ({
     backgroundGradientFrom: "#fff",
@@ -27,7 +43,9 @@ export default function HistoryScreen({ navigation }) {
   }), [settings.characterColor]);
 
   const stats = useMemo(() => {
-    if (!injections.length && !weightEntries.length) return { onTime: 0, siteData: [], currentWeight: '--' }
+    if (!injections.length && !weightEntries.length && !sideEffects.length) {
+      return { onTime: 0, siteData: [], currentWeight: '--', topSymptom: '--' }
+    }
     
     // Calculate on-time rate
     const onTimeCount = injections.filter(i => i.logged_at && i.scheduled_for === i.logged_at.split('T')[0]).length
@@ -52,8 +70,15 @@ export default function HistoryScreen({ navigation }) {
 
     const currentWeight = weightEntries.length > 0 ? weightEntries[0].weight : '--'
 
-    return { onTime: onTimeRate, siteData, currentWeight }
-  }, [injections, weightEntries, settings.characterColor])
+    // Calculate top symptom
+    const symptomCounts = sideEffects.reduce((acc, curr) => {
+      acc[curr.symptom] = (acc[curr.symptom] || 0) + 1
+      return acc
+    }, {})
+    const topSymptom = Object.keys(symptomCounts).sort((a, b) => symptomCounts[b] - symptomCounts[a])[0] || '--'
+
+    return { onTime: onTimeRate, siteData, currentWeight, topSymptom }
+  }, [injections, weightEntries, sideEffects, settings.characterColor])
 
   // Prep line chart data (last 6 months)
   const chartData = useMemo(() => {
@@ -69,7 +94,7 @@ export default function HistoryScreen({ navigation }) {
         const shotDate = parseISO(i.scheduled_for)
         return shotDate >= monthStart && shotDate <= m
       }).length
-      return shotsInMonth // In a weekly app, max is usually 4 or 5
+      return shotsInMonth
     })
 
     return { labels, datasets: [{ data }] }
@@ -78,12 +103,9 @@ export default function HistoryScreen({ navigation }) {
   // Prep weight chart data
   const weightChartData = useMemo(() => {
     if (weightEntries.length < 2) return null
-    
-    // Take last 7 entries and reverse for chronological order
     const recentWeights = [...weightEntries].slice(0, 7).reverse()
     const labels = recentWeights.map(w => format(parseISO(w.logged_at), 'MM/dd'))
     const data = recentWeights.map(w => parseFloat(w.weight))
-
     return { labels, datasets: [{ data }] }
   }, [weightEntries])
 
@@ -114,10 +136,33 @@ export default function HistoryScreen({ navigation }) {
     </MotiView>
   )
 
+  const renderSideEffectItem = (item) => (
+    <MotiView 
+      key={item.id}
+      from={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      style={styles.symptomCard}
+    >
+      <View style={styles.cardHeader}>
+        <Text style={styles.cardSymptom}>🤒 {item.symptom}</Text>
+        <Text style={[styles.cardSeverity, { color: item.severity > 3 ? '#FF5252' : '#FF9800' }]}>
+          Level {item.severity}
+        </Text>
+      </View>
+      <Text style={styles.cardTime}>{format(parseISO(item.logged_at), 'MMM d, h:mm a')}</Text>
+      {item.notes && <Text style={styles.cardNote}>"{item.notes}"</Text>}
+    </MotiView>
+  )
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Dashboard</Text>
+        <View>
+          <Text style={styles.title}>Dashboard</Text>
+          <TouchableOpacity onPress={handleExport} style={styles.exportButton}>
+            <Text style={[styles.exportText, { color: settings.characterColor }]}>Export PDF 📄</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity 
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -142,9 +187,9 @@ export default function HistoryScreen({ navigation }) {
             <Text style={styles.statLabel}>Weight</Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statEmoji}>💉</Text>
-            <Text style={styles.statValue}>{injections.length}</Text>
-            <Text style={styles.statLabel}>Shots</Text>
+            <Text style={styles.statEmoji}>🤒</Text>
+            <Text style={styles.statValue} numberOfLines={1}>{stats.topSymptom}</Text>
+            <Text style={styles.statLabel}>Top Issue</Text>
           </View>
         </View>
 
@@ -195,6 +240,14 @@ export default function HistoryScreen({ navigation }) {
           </View>
         )}
 
+        {/* Side Effects History */}
+        {sideEffects.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recent Symptoms</Text>
+            {sideEffects.slice(0, 5).map(renderSideEffectItem)}
+          </View>
+        )}
+
         {/* Recent History */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Logs</Text>
@@ -223,9 +276,16 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     backgroundColor: 'white',
   },
+  exportButton: {
+    marginTop: 5,
+  },
+  exportText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   title: { fontSize: 24, fontWeight: 'bold' },
   close: { fontSize: 24, color: '#666' },
-  scrollContent: { padding: 20 },
+  scrollContent: { padding: 20, paddingBottom: 60 },
   statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 25 },
   statBox: {
     flex: 1,
@@ -239,7 +299,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   statEmoji: { fontSize: 20, marginBottom: 5 },
-  statValue: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+  statValue: { fontSize: 16, fontWeight: 'bold', color: '#333', textAlign: 'center' },
   statLabel: { fontSize: 10, color: '#999', textTransform: 'uppercase', fontWeight: 'bold' },
   section: { marginBottom: 30 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 15, color: '#333' },
@@ -251,7 +311,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderLeftWidth: 4,
   },
+  symptomCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 15,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9800',
+  },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  cardSymptom: { fontWeight: 'bold', color: '#333', fontSize: 16 },
+  cardSeverity: { fontSize: 12, fontWeight: 'bold' },
+  cardTime: { fontSize: 12, color: '#999', marginBottom: 5 },
   cardDate: { fontWeight: 'bold', color: '#333' },
   cardStatus: { fontSize: 12, fontWeight: 'bold' },
   cardFooter: { gap: 4 },

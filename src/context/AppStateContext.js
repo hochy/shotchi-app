@@ -55,7 +55,9 @@ export const AppStateProvider = ({ children }) => {
           hasCompletedOnboarding: profileData.has_completed_onboarding,
           lastMilestoneCelebrated: profileData.last_milestone_celebrated || 0,
           preferredDrug: profileData.preferred_drug || 'Semaglutide (Wegovy)',
-          preferredDosage: profileData.preferred_dosage || 0.25
+          preferredDosage: profileData.preferred_dosage || 0.25,
+          dosesOnHand: profileData.doses_on_hand || 0,
+          refillThreshold: profileData.refill_threshold || 1
         })
       }
 
@@ -182,6 +184,7 @@ export const AppStateProvider = ({ children }) => {
     session,
     injections,
     weightEntries,
+    sideEffects,
     settings,
     streaks,
     characterState,
@@ -190,6 +193,7 @@ export const AppStateProvider = ({ children }) => {
     refresh: loadAllData,
     logInjection,
     logWeight,
+    logSideEffect,
     updateSettings,
     deleteInjection,
     resetAllData
@@ -204,6 +208,22 @@ export const AppStateProvider = ({ children }) => {
 
 export const useAppState = () => {
   const context = useContext(AppStateContext)
+  if (!context) {
+    throw new Error('useAppState must be used within an AppStateProvider')
+  }
+  return context
+}
+onst context = useContext(AppStateContext)
+  if (!context) {
+    throw new Error('useAppState must be used within an AppStateProvider')
+  }
+  return context
+}
+ be used within an AppStateProvider')
+  }
+  return context
+}
+onst context = useContext(AppStateContext)
   if (!context) {
     throw new Error('useAppState must be used within an AppStateProvider')
   }

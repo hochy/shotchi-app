@@ -4,11 +4,12 @@ import DateTimePicker from '@react-native-community/datetimepicker'
 import { useInjections } from '../hooks/useInjections'
 import { useSettings } from '../hooks/useSettings'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import BodyDiagram from '../components/BodyDiagram'
 import * as Haptics from 'expo-haptics'
 
 export default function LogShotScreen({ navigation }) {
   const insets = useSafeAreaInsets()
-  const { logInjection, logWeight } = useInjections()
+  const { injections, logInjection, logWeight } = useInjections()
   const { settings } = useSettings()
   const [date, setDate] = useState(new Date())
   const [time, setTime] = useState(new Date())
@@ -31,6 +32,8 @@ export default function LogShotScreen({ navigation }) {
     }
   }, [settings.preferredDrug, settings.preferredDosage])
 
+  const lastUsedSite = injections.length > 0 ? injections[0].injection_site : null
+
   const drugs = [
     { label: 'Semaglutide (Wegovy)', value: 'Semaglutide (Wegovy)' },
     { label: 'Semaglutide (Ozempic)', value: 'Semaglutide (Ozempic)' },
@@ -40,15 +43,6 @@ export default function LogShotScreen({ navigation }) {
   ]
 
   const dosageOptions = [0.25, 0.5, 0.75, 1.0, 1.7, 2.0, 2.4, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0]
-
-  const sites = [
-    { label: 'L Thigh', value: 'left_thigh' },
-    { label: 'R Thigh', value: 'right_thigh' },
-    { label: 'L Stomach', value: 'left_stomach' },
-    { label: 'R Stomach', value: 'right_stomach' },
-    { label: 'L Arm', value: 'left_arm' },
-    { label: 'R Arm', value: 'right_arm' },
-  ]
 
   const handleConfirm = async () => {
     try {
@@ -213,26 +207,22 @@ export default function LogShotScreen({ navigation }) {
           </View>
         </ScrollView>
 
-        <Text style={styles.label}>Injection Site (optional)</Text>
-        <View style={styles.sitesContainer}>
-          {sites.map(site => (
-            <TouchableOpacity
-              key={site.value}
-              style={[
-                styles.chip,
-                injectionSite === site.value && [styles.chipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
-              ]}
-              onPress={() => setInjectionSite(site.value)}
-            >
-              <Text style={[
-                styles.chipText,
-                injectionSite === site.value && styles.chipTextSelected
-              ]}>
-                {site.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <Text style={styles.label}>Injection Site (rotation recommended)</Text>
+        <BodyDiagram
+          selectedSite={injectionSite}
+          onSelectSite={(site) => {
+            Haptics.selectionAsync()
+            setInjectionSite(site)
+          }}
+          themeColor={settings.characterColor}
+          lastUsedSite={lastUsedSite}
+        />
+        
+        {injectionSite && (
+          <Text style={[styles.siteSelectionText, { color: settings.characterColor }]}>
+            Selected: {injectionSite.replace('_', ' ').toUpperCase()}
+          </Text>
+        )}
 
         <Text style={styles.label}>Notes (optional)</Text>
         <TextInput
@@ -336,11 +326,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-  sitesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+  siteSelectionText: {
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: 'bold',
     marginBottom: 20,
+    textTransform: 'capitalize'
   },
   notesInput: {
     backgroundColor: 'white',

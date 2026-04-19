@@ -221,6 +221,53 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Inventory & Refills</Text>
+          <View style={styles.row}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.rowLabel}>Doses on Hand</Text>
+              <Text style={styles.rowSubtitle}>Adi will nudge you when you're low.</Text>
+            </View>
+            <View style={styles.counterContainer}>
+              <TouchableOpacity 
+                style={styles.counterButton}
+                onPress={() => handleUpdate({ dosesOnHand: Math.max(0, settings.dosesOnHand - 1) })}
+              >
+                <Text style={styles.counterButtonText}>-</Text>
+              </TouchableOpacity>
+              <Text style={styles.counterValue}>{settings.dosesOnHand}</Text>
+              <TouchableOpacity 
+                style={styles.counterButton}
+                onPress={() => handleUpdate({ dosesOnHand: settings.dosesOnHand + 1 })}
+              >
+                <Text style={styles.counterButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.row}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.rowLabel}>Refill Alert at</Text>
+              <Text style={styles.rowSubtitle}>Set your preferred threshold.</Text>
+            </View>
+            <View style={styles.counterContainer}>
+              <TouchableOpacity 
+                style={styles.counterButton}
+                onPress={() => handleUpdate({ refillThreshold: Math.max(1, settings.refillThreshold - 1) })}
+              >
+                <Text style={styles.counterButtonText}>-</Text>
+              </TouchableOpacity>
+              <Text style={styles.counterValue}>{settings.refillThreshold}</Text>
+              <TouchableOpacity 
+                style={styles.counterButton}
+                onPress={() => handleUpdate({ refillThreshold: settings.refillThreshold + 1 })}
+              >
+                <Text style={styles.counterButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notifications</Text>
           
           <View style={styles.row}>
@@ -344,6 +391,28 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   rowLabel: { fontSize: 16, color: '#333' },
+  rowSubtitle: { fontSize: 12, color: '#999', marginTop: 2 },
+  counterContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#f5f5f5', 
+    borderRadius: 12,
+    padding: 4,
+  },
+  counterButton: { 
+    width: 34, 
+    height: 34, 
+    backgroundColor: 'white', 
+    borderRadius: 8, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 1,
+  },
+  counterButtonText: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+  counterValue: { paddingHorizontal: 15, fontSize: 16, fontWeight: 'bold', color: '#333' },
   devButton: { padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 12 },
   devButtonText: { color: '#666', fontSize: 14, fontWeight: '600' },
   dangerButton: { padding: 15, alignItems: 'center' },

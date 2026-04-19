@@ -150,8 +150,18 @@ export default function HomeScreen({ navigation }) {
         onPress={() => navigation.navigate('MedicationTimeline')}
       >
         <View style={styles.medLevelHeader}>
-          <Text style={styles.medLevelTitle}>Medication Level</Text>
-          <Text style={styles.medLevelValue}>{medLevel.percentage}%</Text>
+          <View>
+            <Text style={styles.medLevelTitle}>Medication Level</Text>
+            <Text style={styles.medLevelSubtitle}>{medLevel.currentLevel} mg remaining</Text>
+          </View>
+          <View style={styles.inventoryBadge}>
+            <Text style={[
+              styles.inventoryText,
+              settings.dosesOnHand <= settings.refillThreshold && { color: '#FF5252' }
+            ]}>
+              {settings.dosesOnHand} {settings.dosesOnHand === 1 ? 'dose' : 'doses'} left
+            </Text>
+          </View>
         </View>
         <View style={styles.progressBarBg}>
           <MotiView 
@@ -160,7 +170,6 @@ export default function HomeScreen({ navigation }) {
             style={[styles.progressBarFill, { backgroundColor: settings.characterColor }]} 
           />
         </View>
-        <Text style={styles.medLevelSubtitle}>{medLevel.currentLevel} mg remaining • View Timeline ›</Text>
       </TouchableOpacity>
 
       {/* Character display with Animations */}
@@ -272,6 +281,18 @@ export default function HomeScreen({ navigation }) {
         >
           <Text style={styles.navText}>Weight ⚖️</Text>
         </TouchableOpacity>
+
+        <View style={styles.navSeparator} />
+
+        <TouchableOpacity 
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+            navigation.navigate('LogSideEffect')
+          }}
+          style={styles.navButton}
+        >
+          <Text style={styles.navText}>Symptoms 🤒</Text>
+        </TouchableOpacity>
       </View>
 
       <CelebrationModal
@@ -341,6 +362,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
+  },
+  inventoryBadge: {
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  inventoryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#666',
   },
   progressBarBg: {
     height: 8,

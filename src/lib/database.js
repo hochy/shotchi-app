@@ -53,6 +53,26 @@ export const updateProfile = async (updates) => {
   return data
 }
 
+export const decrementDoses = async () => {
+  if (await isLocalMode()) {
+    const profile = await localStorage.getLocalProfile()
+    if (profile && profile.doses_on_hand > 0) {
+      return localStorage.updateLocalProfile({ doses_on_hand: profile.doses_on_hand - 1 })
+    }
+    return null
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  // Manual update for simplicity (can be optimized to RPC later)
+  const profile = await getProfile()
+  if (profile && profile.doses_on_hand > 0) {
+    return updateProfile({ doses_on_hand: profile.doses_on_hand - 1 })
+  }
+  return null
+}
+
 // Injection operations
 export const getInjections = async () => {
   if (await isLocalMode()) {
@@ -115,6 +135,51 @@ export const logWeight = async (weight, unit = 'lbs') => {
   return data
 }
 
+// Side Effect operations
+export const getSideEffects = async () => {
+  if (await isLocalMode()) {
+    return localStorage.getLocalSideEffects()
+  }
+
+  const { data, error } = await supabase
+    .from('side_effects')
+    .select('*')
+    .order('logged_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching side effects:', error)
+    return []
+  }
+  return data
+}
+
+export const logSideEffect = async (symptom, severity, notes = null) => {
+  if (await isLocalMode()) {
+    return localStorage.addLocalSideEffect({ symptom, severity, notes, logged_at: new Date().toISOString() })
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase
+    .from('side_effects')
+    .insert({
+      user_id: user.id,
+      symptom,
+      severity,
+      notes,
+      logged_at: new Date().toISOString()
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error logging side effect:', error)
+    return null
+  }
+  return data
+}
+
 export const logInjection = async ({ scheduledFor, note = null, injectionSite = null, drugName = null, dosage = null }) => {
   if (await isLocalMode()) {
     const newInjection = {
@@ -144,6 +209,10 @@ export const logInjection = async ({ scheduledFor, note = null, injectionSite = 
     })
     .select()
     .single()
+
+  if (data) {
+    await decrementDoses()
+  }
 
   if (error) {
     if (error.code === '23505') {
@@ -211,7 +280,13 @@ export const clearAllInjections = async () => {
   }
 
   // Also reset last_injected_at on profile
-  await updateProfile({ last_injected_at: null, last_milestone_celebrated: 0, preferred_dosage: 0.25 })
+  await updateProfile({ 
+    last_injected_at: null, 
+    last_milestone_celebrated: 0, 
+    preferred_dosage: 0.25,
+    doses_on_hand: 0,
+    refill_threshold: 1
+  })
 
   // Reset streaks table
   await supabase
@@ -222,6 +297,12 @@ export const clearAllInjections = async () => {
   // Delete all weight entries
   await supabase
     .from('weight_entries')
+    .delete()
+    .eq('user_id', user.id)
+
+  // Delete all side effect records
+  await supabase
+    .from('side_effects')
     .delete()
     .eq('user_id', user.id)
 

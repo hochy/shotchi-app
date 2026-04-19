@@ -10,6 +10,7 @@ import SettingsScreen from './src/screens/SettingsScreen'
 import AuthScreen from './src/screens/AuthScreen'
 import OnboardingScreen from './src/screens/OnboardingScreen'
 import MedicationTimelineScreen from './src/screens/MedicationTimelineScreen'
+import LogSideEffectScreen from './src/screens/LogSideEffectScreen'
 import { ActivityIndicator, View } from 'react-native'
 
 const Stack = createNativeStackNavigator()
@@ -54,6 +55,7 @@ function AppNavigator() {
           <Stack.Screen name="History" component={HistoryScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="MedicationTimeline" component={MedicationTimelineScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="LogSideEffect" component={LogSideEffectScreen} options={{ headerShown: false }} />
         </>
       )}
     </Stack.Navigator>

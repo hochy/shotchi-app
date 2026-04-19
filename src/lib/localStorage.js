@@ -131,6 +131,7 @@ export const clearLocalData = async () => {
       STORAGE_KEYS.INJECTIONS,
       STORAGE_KEYS.STREAKS,
       STORAGE_KEYS.WEIGHTS,
+      STORAGE_KEYS.SIDE_EFFECTS,
     ])
     return true
   } catch (error) {
@@ -149,6 +150,37 @@ t weights = await getLocalWeights()
     return newWeight
   } catch (error) {
     console.error('Error adding local weight:', error)
+    return null
+  }
+}
+
+// Clear all local data
+export const clearLocalData = async () => {
+  try {
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.PROFILE,
+      STORAGE_KEYS.INJECTIONS,
+      STORAGE_KEYS.STREAKS,
+    ])
+    return true
+  } catch (error) {
+    console.error('Error clearing local data:', error)
+    return false
+  }
+}
+
+  try {
+    const effects = await getLocalSideEffects()
+    const newEffect = {
+      id: `local-se-${Date.now()}`,
+      ...sideEffect,
+      created_at: new Date().toISOString(),
+    }
+    effects.push(newEffect)
+    await AsyncStorage.setItem(STORAGE_KEYS.SIDE_EFFECTS, JSON.stringify(effects))
+    return newEffect
+  } catch (error) {
+    console.error('Error adding local side effect:', error)
     return null
   }
 }
