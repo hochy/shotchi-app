@@ -191,6 +191,11 @@ export const AppStateProvider = ({ children }) => {
     return result
   }
 
+  const deleteUserAccount = async () => {
+    const result = await database.deleteUserAccount()
+    return result
+  }
+
   // Auth listener
   useEffect(() => {
     // Initial permission request
@@ -234,7 +239,8 @@ export const AppStateProvider = ({ children }) => {
     logSideEffect,
     updateSettings,
     deleteInjection,
-    resetAllData
+    resetAllData,
+    deleteUserAccount
   }
 
   return (

@@ -11,7 +11,8 @@ import AuthScreen from './src/screens/AuthScreen'
 import OnboardingScreen from './src/screens/OnboardingScreen'
 import MedicationTimelineScreen from './src/screens/MedicationTimelineScreen'
 import LogSideEffectScreen from './src/screens/LogSideEffectScreen'
-import { ActivityIndicator, View } from 'react-native'
+import ProfileScreen from './src/screens/ProfileScreen'
+import { ActivityIndicator, View, Platform, StyleSheet } from 'react-native'
 
 const Stack = createNativeStackNavigator()
 
@@ -56,6 +57,7 @@ function AppNavigator() {
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="MedicationTimeline" component={MedicationTimelineScreen} options={{ headerShown: false }} />
           <Stack.Screen name="LogSideEffect" component={LogSideEffectScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
         </>
       )}
     </Stack.Navigator>
@@ -65,10 +67,38 @@ function AppNavigator() {
 export default function App() {
   return (
     <AppStateProvider>
-      <NavigationContainer>
-        <StatusBar style="auto" />
-        <AppNavigator />
-      </NavigationContainer>
+      <View style={styles.webWrapper}>
+        <View style={styles.appContainer}>
+          <NavigationContainer>
+            <StatusBar style="auto" />
+            <AppNavigator />
+          </NavigationContainer>
+        </View>
+      </View>
     </AppStateProvider>
   )
 }
+
+const styles = StyleSheet.create({
+  webWrapper: {
+    flex: 1,
+    backgroundColor: Platform.OS === 'web' ? '#F0F0F0' : 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appContainer: {
+    flex: 1,
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 500 : '100%',
+    backgroundColor: 'white',
+    ...Platform.select({
+      web: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+      },
+      default: {},
+    }),
+  },
+})

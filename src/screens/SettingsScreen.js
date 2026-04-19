@@ -7,6 +7,7 @@ import { HealthService } from '../lib/healthService'
 import * as Haptics from 'expo-haptics'
 
 export default function SettingsScreen({ navigation }) {
+  const { session } = useAppState()
   const { settings, loading, saving, updateSettings } = useSettings()
   const { resetAllData } = useAppState()
   const [showTimePicker, setShowTimePicker] = useState(false)
@@ -45,14 +46,6 @@ export default function SettingsScreen({ navigation }) {
     const d = new Date()
     d.setHours(hours, minutes, 0, 0)
     return d
-  }
-
-  const handleSignOut = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-    Alert.alert('Sign Out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Auth' }] }) },
-    ])
   }
 
   const handleResetData = () => {
@@ -123,6 +116,22 @@ export default function SettingsScreen({ navigation }) {
       </View>
 
       <ScrollView style={styles.content}>
+        {/* Account Quick Row */}
+        <TouchableOpacity style={styles.section} onPress={() => navigation.navigate('Profile')}>
+          <View style={styles.accountRow}>
+            <View style={[styles.avatarSmall, { backgroundColor: settings.characterColor }]}>
+              <Text style={styles.avatarTextSmall}>
+                {session?.user?.email?.[0].toUpperCase() || 'A'}
+              </Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 15 }}>
+              <Text style={styles.accountTitle}>My Profile</Text>
+              <Text style={styles.accountSubtitle}>{session?.user?.email || 'Guest Account'}</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </View>
+        </TouchableOpacity>
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Injection Schedule</Text>
           
@@ -343,12 +352,6 @@ export default function SettingsScreen({ navigation }) {
             <Text style={styles.devButtonText}>Reset All Injection Data</Text>
           </TouchableOpacity>
         </View>
-
-        <View style={styles.section}>
-          <TouchableOpacity style={styles.dangerButton} onPress={handleSignOut}>
-            <Text style={styles.dangerButtonText}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
     </View>
   )
@@ -378,6 +381,12 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
+  accountRow: { flexDirection: 'row', alignItems: 'center' },
+  avatarSmall: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  avatarTextSmall: { fontSize: 20, fontWeight: 'bold', color: 'white' },
+  accountTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  accountSubtitle: { fontSize: 13, color: '#999' },
+  chevron: { fontSize: 20, color: '#CCC' },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 15, color: '#333' },
   label: { fontSize: 14, color: '#666', marginBottom: 10, fontWeight: '600' },
   daysContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },

@@ -311,6 +311,24 @@ export const clearAllInjections = async () => {
   return true
 }
 
+export const deleteUserAccount = async () => {
+  if (await isLocalMode()) {
+    return localStorage.clearLocalData()
+  }
+
+  // Trigger the DB wipe function
+  const { error } = await supabase.rpc('delete_user_account')
+  
+  if (error) {
+    console.error('Error deleting account data:', error)
+    return false
+  }
+
+  // Final sign out to clear the session
+  await supabase.auth.signOut()
+  return true
+}
+
 // Streak operations
 export const getStreaks = async () => {
   if (await isLocalMode()) {
