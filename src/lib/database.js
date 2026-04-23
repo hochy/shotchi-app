@@ -110,8 +110,9 @@ export const getWeightEntries = async () => {
 }
 
 export const logWeight = async (weight, unit = 'lbs') => {
+  const timestamp = new Date().toISOString()
   if (await isLocalMode()) {
-    return localStorage.addLocalWeight({ weight, unit, logged_at: new Date().toISOString() })
+    return localStorage.addLocalWeight({ weight, unit, logged_at: timestamp })
   }
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -121,9 +122,9 @@ export const logWeight = async (weight, unit = 'lbs') => {
     .from('weight_entries')
     .insert({
       user_id: user.id,
-      weight,
+      weight: parseFloat(weight),
       unit,
-      logged_at: new Date().toISOString()
+      logged_at: timestamp
     })
     .select()
     .single()

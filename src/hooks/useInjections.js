@@ -2,6 +2,7 @@ import { useAppState } from '../context/AppStateContext'
 
 export const useInjections = () => {
   const {
+    session,
     injections,
     weightEntries,
     sideEffects,
@@ -14,13 +15,14 @@ export const useInjections = () => {
   } = useAppState()
 
   return {
+    session,
     injections,
     weightEntries,
     sideEffects,
     streaks,
     characterState,
     loading,
-    error: null, // Error handling can be added to context later
+    error: null,
     refresh,
     logInjection,
     logWeight

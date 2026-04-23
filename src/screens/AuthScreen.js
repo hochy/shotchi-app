@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native'
 import { supabase } from '../lib/supabase'
 import * as Linking from 'expo-linking'
+import * as WebBrowser from 'expo-web-browser'
+
+// Required for WebBrowser flow
+WebBrowser.maybeCompleteAuthSession();
 
 export default function AuthScreen({ navigation, onSkip }) {
   const [authMode, setAuthMode] = useState('login') // 'login', 'signup', 'forgot', 'reset'
@@ -14,15 +18,16 @@ export default function AuthScreen({ navigation, onSkip }) {
   useEffect(() => {
     const handleUrl = (url) => {
       if (!url) return
+      console.log('Detected incoming URL:', url)
       
-      // On web, Supabase often uses the hash fragment (#)
-      // On native, it uses query params
-      const isRecovery = url.includes('type=recovery') || 
-                         url.includes('access_token') || 
-                         url.includes('recovery');
+      // Only trigger 'reset' mode if it's specifically a password recovery link
+      const isRecovery = url.includes('type=recovery') || url.includes('recovery_token');
 
       if (isRecovery) {
+        console.log('Recovery link detected, switching to reset mode.')
         setAuthMode('reset')
+      } else {
+        console.log('Standard link/OAuth detected, let standard auth listeners handle it.')
       }
     }
 
@@ -42,14 +47,54 @@ export default function AuthScreen({ navigation, onSkip }) {
   const handleGoogleLogin = async () => {
     try {
       setLoading(true)
-      const { error } = await supabase.auth.signInWithOAuth({
+      console.log('Starting Google OAuth flow...')
+      
+      const redirectUri = Linking.createURL('home')
+      console.log('Redirect URI:', redirectUri)
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: Linking.createURL('home')
+          redirectTo: redirectUri,
+          skipBrowserRedirect: true,
         }
       })
+
       if (error) throw error
+
+      if (data?.url) {
+        console.log('Opening auth URL:', data.url)
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri)
+        
+        if (result.type === 'success' && result.url) {
+          console.log('OAuth redirect received:', result.url)
+          
+          // Helper to parse tokens from both query params (?) AND hash fragments (#)
+          const extractToken = (url, key) => {
+            const regex = new RegExp(`[#?&]${key}=([^&]*)`);
+            const match = url.match(regex);
+            return match ? decodeURIComponent(match[1]) : null;
+          };
+
+          const accessToken = extractToken(result.url, 'access_token');
+          const refreshToken = extractToken(result.url, 'refresh_token');
+
+          if (accessToken) {
+            console.log('Success! Tokens extracted. Logging in...')
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || '',
+            })
+            if (sessionError) throw sessionError
+          } else {
+            console.warn('OAuth success but no access_token found in URL.')
+          }
+        } else {
+          console.log('OAuth session cancelled or failed:', result.type)
+        }
+      }
     } catch (error) {
+      console.error('Google Login Error:', error)
       Alert.alert('Google Login Error', error.message)
     } finally {
       setLoading(false)
@@ -184,7 +229,7 @@ export default function AuthScreen({ navigation, onSkip }) {
             )}
           </TouchableOpacity>
 
-          {authMode === 'login' && (
+          {(authMode === 'login' || authMode === 'signup') && (
             <>
               <View style={styles.divider}>
                 <View style={styles.line} />
@@ -199,11 +244,13 @@ export default function AuthScreen({ navigation, onSkip }) {
               >
                 <Text style={styles.googleButtonText}>Continue with Google</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => setAuthMode('forgot')}>
-                <Text style={styles.forgotPassword}>Forgot Password?</Text>
-              </TouchableOpacity>
             </>
+          )}
+
+          {authMode === 'login' && (
+            <TouchableOpacity onPress={() => setAuthMode('forgot')}>
+              <Text style={styles.forgotPassword}>Forgot Password?</Text>
+            </TouchableOpacity>
           )}
 
           {authMode === 'forgot' && (

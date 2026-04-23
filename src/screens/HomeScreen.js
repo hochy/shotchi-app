@@ -1,35 +1,40 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Image, Dimensions, Alert } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Alert, ScrollView } from 'react-native'
 import { MotiView, AnimatePresence } from 'moti'
 import * as Haptics from 'expo-haptics'
 import { useInjections } from '../hooks/useInjections'
 import { useSettings } from '../hooks/useSettings'
 import CelebrationModal from '../components/CelebrationModal'
+import WeightLogModal from '../components/WeightLogModal'
+import Adi from '../components/Adi'
 import SpeechBubble from '../components/SpeechBubble'
+import StatPill from '../components/StatPill'
+import Btn from '../components/Btn'
+import Card from '../components/Card'
+import SkeletonLoader from '../components/SkeletonLoader'
 import { calculateCurrentLevel } from '../lib/medicationLevels'
 import { getAdiMessage } from '../lib/adiMessages'
-
-// Asset imports
-import adiHappy from '../assets/character/adi-happy.png'
-import adiNeutral from '../assets/character/adi-neutral.png'
-import adiSad from '../assets/character/adi-sad.png'
-import adiWaiting from '../assets/character/adi-waiting.png'
+import { format, differenceInDays, parseISO } from 'date-fns'
 
 const { width } = Dimensions.get('window')
 
 export default function HomeScreen({ navigation }) {
-  const { injections, sideEffects, streaks, characterState, loading, logWeight } = useInjections()
+  const { session, injections, weightEntries, sideEffects, streaks, characterState, loading, logWeight } = useInjections()
   const { settings, updateSettings } = useSettings()
   const [showCelebration, setShowCelebration] = useState(false)
+  const [showWeightModal, setShowWeightModal] = useState(false)
   const [milestoneReached, setMilestoneReached] = useState(0)
   const [adiMessage, setAdiMessage] = useState('')
 
-  // Medication Level Calculation
-  const medLevel = useMemo(() => {
-    return calculateCurrentLevel(injections)
-  }, [injections])
+  const isDark = settings.darkMode
+  const themeColor = settings.characterColor || '#7BAF8E'
+  const textColor = isDark ? '#FFFFFF' : '#1c1c1e'
+  const subTextColor = isDark ? '#aaaaaa' : '#666666'
+  const cardBg = isDark ? '#1c1c1e' : '#FFFFFF'
+  const appBg = isDark ? '#000000' : '#FFFFFF'
 
-  // Update Adi's message when state changes
+  const medLevel = useMemo(() => calculateCurrentLevel(injections), [injections])
+
   useEffect(() => {
     if (!loading) {
       const msg = getAdiMessage({ streaks, characterState, settings, injections, sideEffects })
@@ -38,17 +43,14 @@ export default function HomeScreen({ navigation }) {
   }, [loading, characterState, streaks.current, sideEffects.length])
 
   const handleCycleMessage = () => {
-    Haptics.selectionAsync()
     const msg = getAdiMessage({ streaks, characterState, settings, injections, sideEffects })
     setAdiMessage(msg)
   }
 
-  // Check for milestones on load or when streaks update
   useEffect(() => {
     if (streaks.current > 0) {
       const milestones = [52, 26, 12, 4]
       const currentMilestone = milestones.find(m => streaks.current >= m)
-      
       if (currentMilestone && currentMilestone > (settings.lastMilestoneCelebrated || 0)) {
         setMilestoneReached(currentMilestone)
         setShowCelebration(true)
@@ -60,440 +62,175 @@ export default function HomeScreen({ navigation }) {
     setShowCelebration(false)
     await updateSettings({ lastMilestoneCelebrated: milestoneReached })
   }
-  
-  // Character state to asset mapping
-  const characterAssets = {
-    happy: adiHappy,
-    neutral: adiNeutral,
-    sad: adiSad,
-    waiting: adiWaiting,
+
+  const onSaveWeight = async (val) => {
+    await logWeight(val, 'lbs')
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
   }
 
-  // Mood-based background colors (soft ambience)
-  const bgColor = useMemo(() => {
-    switch (characterState) {
-      case 'happy': return '#E8F5E9' // Light green
-      case 'sad': return '#E3F2FD' // Light blue/grey
-      case 'neutral': return '#FFF8E1' // Light amber
-      case 'waiting': return '#F3E5F5' // Light purple
-      default: return '#F5F5F5'
+  const totalLost = useMemo(() => {
+    if (weightEntries.length < 2) return 0
+    const start = parseFloat(weightEntries[weightEntries.length - 1].weight)
+    const current = parseFloat(weightEntries[0].weight)
+    return (start - current).toFixed(1)
+  }, [weightEntries])
+
+  const timeGreeting = useMemo(() => {
+    const hour = new Date().getHours()
+    if (hour < 12) return 'Good morning'
+    if (hour < 17) return 'Good afternoon'
+    return 'Good evening'
+  }, [])
+
+  const displayName = useMemo(() => {
+    if (settings.nickname) return settings.nickname
+    const givenName = session?.user?.user_metadata?.given_name
+    if (givenName) return givenName
+    const fullName = session?.user?.user_metadata?.full_name
+    if (fullName) return fullName.split(' ')[0]
+    if (session?.user?.email) {
+      const emailPrefix = session.user.email.split('@')[0]
+      const firstName = emailPrefix.split('.')[0]
+      return firstName.charAt(0).toUpperCase() + firstName.slice(1)
     }
-  }, [characterState])
+    return 'friend'
+  }, [settings.nickname, session])
 
-  const handleLogShot = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    navigation.navigate('LogShot')
-  }
+  const nextDueDate = streaks.nextDue ? format(new Date(streaks.nextDue), 'EEEE') : 'Monday'
+  const onTimeRate = useMemo(() => {
+    if (injections.length === 0) return 0
+    const onTimeCount = injections.filter(i => i.logged_at && i.scheduled_for === i.logged_at.split('T')[0]).length
+    return Math.round((onTimeCount / injections.length) * 100)
+  }, [injections])
 
-  const handleLogWeight = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    Alert.prompt(
-      "Log Weight",
-      "Enter your current weight in lbs:",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Log", 
-          onPress: async (value) => {
-            const weight = parseFloat(value)
-            if (!isNaN(weight)) {
-              await logWeight(weight, 'lbs')
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-              Alert.alert("Success", "Weight logged!")
-            } else {
-              Alert.alert("Error", "Please enter a valid number.")
-            }
-          } 
-        }
-      ],
-      "plain-text"
-    )
-  }
+  const dayOfCycle = useMemo(() => {
+    if (!injections.length) return 1
+    const diff = differenceInDays(new Date(), parseISO(injections[0]?.scheduled_for || new Date().toISOString()))
+    return (diff % 7) + 1
+  }, [injections])
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: '#F5F5F5' }]}>
-        <MotiView
-          from={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          style={styles.loadingContainer}
-        >
-          <Text style={styles.loadingText}>Loading Adi...</Text>
-        </MotiView>
+      <View style={[styles.container, { backgroundColor: appBg, paddingHorizontal: 20 }]}>
+        <View style={styles.header}>
+          <SkeletonLoader width={120} height={32} />
+          <SkeletonLoader width={30} height={30} borderRadius={15} />
+        </View>
+        <View style={styles.adiLoadingContainer}><SkeletonLoader width={150} height={150} borderRadius={75} /></View>
+        <View style={{ gap: 15 }}>
+          <SkeletonLoader width="100%" height={80} borderRadius={20} />
+          <SkeletonLoader width="100%" height={60} borderRadius={20} />
+          <SkeletonLoader width="100%" height={150} borderRadius={20} />
+        </View>
       </View>
     )
   }
 
-  const nextDueDate = streaks.nextDue 
-    ? new Date(streaks.nextDue).toLocaleDateString('en-US', { 
-        weekday: 'long', 
-        month: 'short', 
-        day: 'numeric' 
-      })
-    : 'No due date'
-
-  const getStatusMessage = () => {
-    switch (characterState) {
-      case 'happy': return 'Great job! Keep it up!'
-      case 'neutral': return `Time for your shot on ${nextDueDate}`
-      case 'sad': return `Overdue! Shot on ${nextDueDate}`
-      case 'waiting': return 'Ready for your first shot?'
-      default: return 'How are you today?'
-    }
-  }
-
   return (
-    <MotiView 
-      animate={{ backgroundColor: bgColor }}
-      transition={{ type: 'timing', duration: 1000 }}
-      style={styles.container}
-    >
-      {/* Top bar */}
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: settings.characterColor }]}>Shotchi</Text>
-        <TouchableOpacity 
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-            navigation.navigate('Settings')
-          }}
+    <View style={[styles.container, { backgroundColor: appBg }]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <MotiView 
+          animate={{ backgroundColor: characterState === 'happy' ? (isDark ? '#1a2e1d' : '#E8F5E9') : (isDark ? '#121212' : '#F7F8FA') }} 
+          style={styles.topSection}
         >
-          <Text style={styles.settings}>⚙️</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Medication Level */}
-      <TouchableOpacity 
-        style={styles.medLevelContainer}
-        onPress={() => navigation.navigate('MedicationTimeline')}
-      >
-        <View style={styles.medLevelHeader}>
-          <View>
-            <Text style={styles.medLevelTitle}>Medication Level</Text>
-            <Text style={styles.medLevelSubtitle}>{medLevel.currentLevel} mg remaining</Text>
+          <View style={styles.header}>
+            <Text style={[styles.dateText, { color: subTextColor }]}>{format(new Date(), 'EEEE, MMM d')}</Text>
+            <View style={styles.headerRight}>
+              <View style={[styles.streakBadge, { backgroundColor: themeColor }]}>
+                <Text style={styles.streakBadgeText}>🔥 {streaks.current}</Text>
+              </View>
+              <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.settingsBtn}>
+                <Text style={{ fontSize: 22 }}>⚙️</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={styles.inventoryBadge}>
-            <Text style={[
-              styles.inventoryText,
-              settings.dosesOnHand <= settings.refillThreshold && settings.dosesOnHand > 0 && { color: '#FF5252' }
-            ]}>
-              {settings.dosesOnHand} {settings.dosesOnHand === 1 ? 'dose' : 'doses'} left
-            </Text>
+          
+          <TouchableOpacity activeOpacity={0.9} onPress={handleCycleMessage} style={styles.adiContainer}>
+            <SpeechBubble message={adiMessage} themeColor={themeColor} />
+            <Adi state={characterState} color={themeColor} size={125} />
+          </TouchableOpacity>
+          
+          <View style={styles.welcomeContainer}>
+            <Text style={[styles.welcomeText, { color: textColor }]}>{timeGreeting}, {displayName}! 👋</Text>
+            <Text style={[styles.statusSubtext, { color: subTextColor }]}>{characterState === 'happy' ? "You're crushing it — shot logged today" : "Ready for your weekly injection?"}</Text>
           </View>
-        </View>
-        <View style={styles.progressBarBg}>
-          <MotiView 
-            animate={{ width: `${medLevel.percentage}%` }}
-            transition={{ type: 'timing', duration: 1500 }}
-            style={[styles.progressBarFill, { backgroundColor: settings.characterColor }]} 
-          />
-        </View>
-      </TouchableOpacity>
-
-      {/* Character display with Animations & Speech */}
-      <View style={styles.characterContainer}>
-        {adiMessage ? <SpeechBubble message={adiMessage} themeColor={settings.characterColor} /> : null}
-        
-        <TouchableOpacity activeOpacity={1} onPress={handleCycleMessage}>
-          <AnimatePresence exitBeforeEnter>
-            <MotiView
-              key={characterState}
-              from={{ opacity: 0, scale: 0.8, translateY: 20 }}
-              animate={{ opacity: 1, scale: 1, translateY: 0 }}
-              exit={{ opacity: 0, scale: 0.8, translateY: -20 }}
-              transition={{ type: 'spring', damping: 15 }}
-              style={styles.characterWrapper}
-            >
-              <MotiView
-                from={{ translateY: 0 }}
-                animate={{ translateY: characterState === 'happy' ? -15 : -8 }}
-                transition={{
-                  type: 'timing',
-                  duration: characterState === 'happy' ? 800 : 2000,
-                  loop: true,
-                  repeatReverse: true,
-                }}
-              >
-                <Image 
-                  source={characterAssets[characterState]} 
-                  style={styles.characterImage} 
-                />
-                
-                <MotiView 
-                  from={{ scale: 1, opacity: 0.2 }}
-                  animate={{ 
-                    scale: characterState === 'happy' ? 0.7 : 0.85, 
-                    opacity: 0.15 
-                  }}
-                  transition={{
-                    type: 'timing',
-                    duration: characterState === 'happy' ? 800 : 2000,
-                    loop: true,
-                    repeatReverse: true,
-                  }}
-                  style={styles.shadow}
-                />
-              </MotiView>
-            </MotiView>
-          </AnimatePresence>
-        </TouchableOpacity>
-      </View>
-
-      {/* Status message */}
-      <MotiView 
-        from={{ opacity: 0, translateY: 10 }}
-        animate={{ opacity: 1, translateY: 0 }}
-        key={getStatusMessage()}
-        style={styles.statusContainer}
-      >
-        <Text style={styles.statusText}>{getStatusMessage()}</Text>
-      </MotiView>
-
-      {/* Streak info */}
-      <View style={styles.streakContainer}>
-        <Text style={styles.streakText}>🔥 {streaks.current} day streak</Text>
-        <Text style={styles.bestStreakText}>Best: {streaks.longest} days</Text>
-      </View>
-
-      {/* Next due */}
-      <View style={styles.dueContainer}>
-        <Text style={styles.dueText}>Next shot: {nextDueDate}</Text>
-      </View>
-
-      {/* Log Shot CTA */}
-      <TouchableOpacity 
-        style={styles.logButton} 
-        onPress={handleLogShot}
-        activeOpacity={0.7}
-      >
-        <MotiView
-          from={{ scale: 1 }}
-          animate={{ scale: characterState === 'neutral' || characterState === 'sad' ? 1.05 : 1 }}
-          transition={{
-            type: 'timing',
-            duration: 1000,
-            loop: true,
-            repeatReverse: true,
-          }}
-          style={[styles.logButtonInner, { backgroundColor: settings.characterColor }]}
-        >
-          <Text style={styles.logButtonText}>LOG SHOT</Text>
         </MotiView>
-      </TouchableOpacity>
 
-      {/* Navigation */}
-      <View style={styles.navContainer}>
-        <TouchableOpacity 
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-            navigation.navigate('History')
-          }}
-          style={styles.navButton}
-        >
-          <Text style={styles.navText}>History 📊</Text>
-        </TouchableOpacity>
-        
-        <View style={styles.navSeparator} />
-        
-        <TouchableOpacity 
-          onPress={handleLogWeight}
-          style={styles.navButton}
-        >
-          <Text style={styles.navText}>Weight ⚖️</Text>
-        </TouchableOpacity>
+        <View style={styles.mainContent}>
+          <Btn full onPress={() => navigation.navigate('LogShot')} color={themeColor} style={styles.mainLogBtn}>💉 Log Today's Shot</Btn>
+          <View style={styles.statsRow}>
+            <StatPill label="Next dose" value={nextDueDate} themeColor={themeColor} />
+            <StatPill label="Lost" value={`${Math.abs(totalLost)} lbs`} themeColor={themeColor} />
+            <StatPill label="On-time" value={`${onTimeRate}%`} themeColor={themeColor} />
+          </View>
 
-        <View style={styles.navSeparator} />
+          <TouchableOpacity activeOpacity={0.8} onPress={() => navigation.navigate('MedicationTimeline')} style={[styles.medLevelBadge, { backgroundColor: isDark ? `${themeColor}15` : `${themeColor}12`, borderColor: isDark ? `${themeColor}30` : `${themeColor}44` }]}>
+            <View style={[styles.iconCircle, { backgroundColor: `${themeColor}30` }]}><Text style={{ fontSize: 18 }}>💊</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.medLevelTitle, { color: themeColor }]}>{medLevel.percentage}% medication level · Day {dayOfCycle}</Text>
+              <Text style={[styles.medLevelSub, { color: subTextColor }]}>Peak side effects may occur tomorrow</Text>
+            </View>
+            <Text style={{ color: themeColor, fontSize: 16 }}>›</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity 
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-            navigation.navigate('LogSideEffect')
-          }}
-          style={styles.navButton}
-        >
-          <Text style={styles.navText}>Symptoms 🤒</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('History')}>
+            <Card style={[styles.weightCard, { backgroundColor: cardBg }]}>
+              <View>
+                <Text style={[styles.miniCardLabel, { color: subTextColor }]}>WEIGHT TREND</Text>
+                <Text style={[styles.weightValue, { color: textColor }]}>{weightEntries[0]?.weight || '--'} <Text style={[styles.weightUnit, { color: subTextColor }]}>lbs</Text></Text>
+                {Math.abs(totalLost) > 0 && (
+                  <Text style={[styles.weightLoss, { color: totalLost >= 0 ? '#4caf7d' : '#E74C3C' }]}>
+                    {totalLost >= 0 ? '↓' : '↑'} {Math.abs(totalLost)} lbs total
+                  </Text>
+                )}
+              </View>
+              <View style={[styles.sparklinePlaceholder, { borderColor: isDark ? '#333' : '#eee' }]}><Text style={{ color: themeColor, fontSize: 10, fontWeight: 'bold' }}>📉 View History</Text></View>
+            </Card>
+          </TouchableOpacity>
 
-      <CelebrationModal
-        visible={showCelebration}
-        milestone={milestoneReached}
-        onDismiss={handleDismissCelebration}
-      />
-    </MotiView>
+          <View style={styles.shortcutsGrid}>
+            <TouchableOpacity style={[styles.shortcutItem, { backgroundColor: cardBg, borderColor: isDark ? '#333' : '#eee' }]} onPress={() => navigation.navigate('LogSideEffect')}><Text style={styles.shortcutEmoji}>😊</Text><Text style={[styles.shortcutLabel, { color: subTextColor }]}>Symptoms</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.shortcutItem, { backgroundColor: cardBg, borderColor: isDark ? '#333' : '#eee' }]} onPress={() => setShowWeightModal(true)}><Text style={styles.shortcutEmoji}>⚖️</Text><Text style={[styles.shortcutLabel, { color: subTextColor }]}>Weight Log</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.shortcutItem, { backgroundColor: cardBg, borderColor: isDark ? '#333' : '#eee' }]} onPress={() => navigation.navigate('Achievements')}><Text style={styles.shortcutEmoji}>🏆</Text><Text style={[styles.shortcutLabel, { color: subTextColor }]}>Awards</Text></TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+      <CelebrationModal visible={showCelebration} milestone={milestoneReached} onDismiss={handleDismissCelebration} />
+      <WeightLogModal visible={showWeightModal} onClose={() => setShowWeightModal(false)} onSave={onSaveWeight} themeColor={themeColor} />
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 18,
-    color: '#7BAF8E',
-    fontWeight: '600',
-  },
-  header: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 10,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  settings: {
-    fontSize: 24,
-  },
-  medLevelContainer: {
-    width: width - 40,
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 15,
-    marginTop: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  medLevelHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  medLevelTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#666',
-    textTransform: 'uppercase',
-  },
-  medLevelSubtitle: {
-    fontSize: 12,
-    color: '#999',
-  },
-  inventoryBadge: {
-    backgroundColor: '#f5f5f5',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  inventoryText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#666',
-  },
-  progressBarBg: {
-    height: 8,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  characterContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
-    paddingTop: 20,
-  },
-  characterWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  characterImage: {
-    width: 220,
-    height: 220,
-    resizeMode: 'contain',
-  },
-  shadow: {
-    width: 100,
-    height: 15,
-    backgroundColor: '#000',
-    borderRadius: 50,
-    alignSelf: 'center',
-    marginTop: -10,
-    zIndex: -1,
-  },
-  statusContainer: {
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 10,
-  },
-  statusText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
-  },
-  streakContainer: {
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  streakText: {
-    fontSize: 18,
-    color: '#666',
-    fontWeight: '600',
-  },
-  bestStreakText: {
-    fontSize: 14,
-    color: '#999',
-  },
-  dueContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  dueText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  logButton: {
-    marginBottom: 20,
-  },
-  logButtonInner: {
-    paddingHorizontal: 50,
-    paddingVertical: 18,
-    borderRadius: 35,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  logButtonText: {
-    color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  navContainer: {
-    flexDirection: 'row',
-    marginBottom: 60,
-    alignItems: 'center',
-    gap: 15,
-  },
-  navButton: {
-    padding: 8,
-  },
-  navSeparator: {
-    width: 1,
-    height: 15,
-    backgroundColor: '#ddd',
-  },
-  navText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
+  container: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
+  topSection: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 30, alignItems: 'center', borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
+  header: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  dateText: { fontSize: 13, fontWeight: '700' },
+  streakBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  streakBadgeText: { color: 'white', fontSize: 12, fontWeight: '900' },
+  settingsBtn: { padding: 4 },
+  adiContainer: { height: 180, alignItems: 'center', justifyContent: 'center', width: '100%', marginVertical: 10 },
+  welcomeContainer: { alignItems: 'center', marginTop: 10 },
+  welcomeText: { fontSize: 21, fontWeight: '900' },
+  statusSubtext: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  mainContent: { paddingHorizontal: 20, paddingTop: 10 },
+  mainLogBtn: { marginBottom: 15 },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 15 },
+  medLevelBadge: { flexDirection: 'row', alignItems: 'center', padding: 10, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1.5, marginBottom: 15 },
+  iconCircle: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  medLevelTitle: { fontSize: 13, fontWeight: '800' },
+  medLevelSub: { fontSize: 11, fontWeight: '600', marginTop: 1 },
+  weightCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, marginBottom: 15 },
+  miniCardLabel: { fontSize: 11, fontWeight: '700', marginBottom: 2, letterSpacing: 0.5 },
+  weightValue: { fontSize: 24, fontWeight: '900' },
+  weightUnit: { fontSize: 13, fontWeight: '600' },
+  weightLoss: { fontSize: 12, fontWeight: '700' },
+  sparklinePlaceholder: { width: 90, height: 40, alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', borderWidth: 1, borderRadius: 8 },
+  shortcutsGrid: { flexDirection: 'row', gap: 10 },
+  shortcutItem: { flex: 1, borderRadius: 16, paddingVertical: 12, alignItems: 'center', borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
+  shortcutEmoji: { fontSize: 22, marginBottom: 6 },
+  shortcutLabel: { fontSize: 12, fontWeight: '700' },
+  adiLoadingContainer: { height: 200, alignItems: 'center', justifyContent: 'center' },
 })

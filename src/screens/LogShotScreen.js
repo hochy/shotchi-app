@@ -1,17 +1,30 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image, Dimensions } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useInjections } from '../hooks/useInjections'
 import { useSettings } from '../hooks/useSettings'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import BodyDiagram from '../components/BodyDiagram'
+import Adi from '../components/Adi'
+import Btn from '../components/Btn'
+import Card from '../components/Card'
 import * as ImagePicker from 'expo-image-picker'
 import * as Haptics from 'expo-haptics'
+
+const { width } = Dimensions.get('window')
 
 export default function LogShotScreen({ navigation }) {
   const insets = useSafeAreaInsets()
   const { injections, logInjection, logWeight } = useInjections()
   const { settings } = useSettings()
+  const isDark = settings.darkMode
+  const themeColor = settings.characterColor || '#7BAF8E'
+  const textColor = isDark ? 'white' : '#1c1c1e'
+  const subTextColor = isDark ? '#aaa' : '#666'
+  const appBg = isDark ? '#000' : '#F7F8FA'
+  const headerBg = isDark ? '#1c1c1e' : 'white'
+  
+  const [step, setStep] = useState(1)
   const [date, setDate] = useState(new Date())
   const [time, setTime] = useState(new Date())
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -24,60 +37,23 @@ export default function LogShotScreen({ navigation }) {
   const [image, setImage] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  // Sync with default medication from settings
   useEffect(() => {
-    if (settings.preferredDrug) {
-      setDrugName(settings.preferredDrug)
-    }
-    if (settings.preferredDosage) {
-      setDosage(settings.preferredDosage)
-    }
+    if (settings.preferredDrug) setDrugName(settings.preferredDrug)
+    if (settings.preferredDosage) setDosage(settings.preferredDosage)
   }, [settings.preferredDrug, settings.preferredDosage])
 
   const lastUsedSite = injections.length > 0 ? injections[0].injection_site : null
 
-  const drugs = [
-    { label: 'Semaglutide (Wegovy)', value: 'Semaglutide (Wegovy)' },
-    { label: 'Semaglutide (Ozempic)', value: 'Semaglutide (Ozempic)' },
-    { label: 'Tirzepatide (Zepbound)', value: 'Tirzepatide (Zepbound)' },
-    { label: 'Tirzepatide (Mounjaro)', value: 'Tirzepatide (Mounjaro)' },
-    { label: 'Liraglutide (Saxenda)', value: 'Liraglutide (Saxenda)' },
-  ]
-
+  const drugs = ['Semaglutide (Wegovy)', 'Semaglutide (Ozempic)', 'Tirzepatide (Zepbound)', 'Tirzepatide (Mounjaro)', 'Liraglutide (Saxenda)']
   const dosageOptions = [0.25, 0.5, 0.75, 1.0, 1.7, 2.0, 2.4, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0]
 
-  const pickImage = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    
-    const { status } = await ImagePicker.requestCameraPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'We need camera access to take a photo.')
-      return
-    }
-
-    let result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.5,
-    })
-
-    if (!result.canceled) {
-      setImage(result.assets[0].uri)
-    }
-  }
-
-  const handleConfirm = async () => {
+  const handleFinalConfirm = async () => {
     try {
       setLoading(true)
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-
       const scheduledDate = new Date(date)
       scheduledDate.setHours(time.getHours(), time.getMinutes(), 0, 0)
-
       const formattedDate = scheduledDate.toISOString().split('T')[0]
 
-      // Save via context
       const result = await logInjection({ 
         scheduledFor: formattedDate, 
         note: note || null,
@@ -91,167 +67,193 @@ export default function LogShotScreen({ navigation }) {
         await logWeight(parseFloat(weight), 'lbs')
       }
       
-      if (result && result.error === 'ALREADY_LOGGED') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-        Alert.alert('Already Logged', 'An injection for this date has already been recorded.')
-        return
-      }
-
-      if (result) {
-        navigation.goBack()
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-        Alert.alert('Error', 'Failed to log injection')
-      }
+      if (result) setStep(3)
     } catch (error) {
-      console.error('Error logging shot:', error)
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      console.error(error)
     } finally {
       setLoading(false)
     }
   }
 
-  const onChangeDate = (event, selectedDate) => {
-    const currentDate = selectedDate || date
-    setShowDatePicker(false)
-    setDate(currentDate)
-  }
-
-  const onChangeTime = (event, selectedTime) => {
-    const currentTime = selectedTime || time
-    setShowTimePicker(false)
-    setTime(currentTime)
-  }
-
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Log Shot</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.close}>✕</Text>
+  const renderStep1 = () => (
+    <View style={{ flex: 1 }}>
+      <View style={[styles.header, { backgroundColor: headerBg }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={{ fontSize: 20, color: subTextColor }}>✕</Text>
         </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: textColor }]}>Log Your Shot</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
-        <Text style={styles.label}>Date & Time</Text>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}>
         <View style={styles.row}>
-          <TouchableOpacity style={[styles.input, { flex: 1, marginRight: 10 }]} onPress={() => setShowDatePicker(true)}>
-            <Text style={styles.inputText}>{date.toLocaleDateString()}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.input, { flex: 1 }]} onPress={() => setShowTimePicker(true)}>
-            <Text style={styles.inputText}>{time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-          </TouchableOpacity>
+          <Card style={styles.dateTimeBox}>
+            <Text style={styles.miniLabel}>DATE</Text>
+            <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+              <Text style={[styles.dateTimeText, { color: textColor }]}>{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
+            </TouchableOpacity>
+          </Card>
+          <Card style={styles.dateTimeBox}>
+            <Text style={styles.miniLabel}>TIME</Text>
+            <TouchableOpacity onPress={() => setShowTimePicker(true)}>
+              <Text style={[styles.dateTimeText, { color: textColor }]}>{time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+            </TouchableOpacity>
+          </Card>
         </View>
 
-        {showDatePicker && <DateTimePicker value={date} mode="date" onChange={onChangeDate} />}
-        {showTimePicker && <DateTimePicker value={time} mode="time" onChange={onChangeTime} />}
+        {showDatePicker && <DateTimePicker value={date} mode="date" onChange={(e, d) => { setShowDatePicker(false); if (d) setDate(d); }} />}
+        {showTimePicker && <DateTimePicker value={time} mode="time" onChange={(e, d) => { setShowTimePicker(false); if (d) setTime(d); }} />}
 
-        <Text style={styles.label}>Medication & Dosage</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollSelector}>
-          <View style={styles.chipContainer}>
-            {drugs.map(drug => (
-              <TouchableOpacity
-                key={drug.value}
-                style={[styles.chip, drugName === drug.value && [styles.chipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]]}
-                onPress={() => setDrugName(drug.value)}
-              >
-                <Text style={[styles.chipText, drugName === drug.value && styles.chipTextSelected]}>{drug.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollSelector}>
-          <View style={styles.chipContainer}>
-            {dosageOptions.map(opt => (
-              <TouchableOpacity
-                key={opt}
-                style={[styles.chip, dosage === opt && [styles.chipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]]}
-                onPress={() => setDosage(opt)}
-              >
-                <Text style={[styles.chipText, dosage === opt && styles.chipTextSelected]}>{opt} mg</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-
-        <Text style={styles.label}>Visual Verification</Text>
-        <TouchableOpacity style={styles.photoButton} onPress={pickImage}>
-          {image ? (
-            <Image source={{ uri: image }} style={styles.previewImage} />
-          ) : (
-            <>
-              <Text style={styles.photoButtonEmoji}>📸</Text>
-              <Text style={styles.photoButtonText}>Take a Photo (Optional)</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        <Text style={styles.label}>Injection Site</Text>
-        <BodyDiagram
-          selectedSite={injectionSite}
-          onSelectSite={setInjectionSite}
-          themeColor={settings.characterColor}
-          lastUsedSite={lastUsedSite}
-        />
-
-        <Text style={styles.label}>Current Weight</Text>
-        <View style={styles.weightInputContainer}>
-          <TextInput
-            style={styles.weightInput}
-            placeholder="0.0"
-            keyboardType="decimal-pad"
-            value={weight}
-            onChangeText={setWeight}
+        <Card style={styles.card}>
+          <Text style={styles.cardLabel}>INJECTION SITE</Text>
+          <BodyDiagram
+            selectedSite={injectionSite}
+            onSelectSite={setInjectionSite}
+            themeColor={themeColor}
+            lastUsedSite={lastUsedSite}
           />
-          <Text style={styles.weightUnit}>lbs</Text>
-        </View>
+          <View style={[styles.siteIndicator, { backgroundColor: isDark ? `${themeColor}25` : `${themeColor}15` }]}>
+            <Text style={[styles.siteIndicatorText, { color: themeColor }]}>
+              📍 {injectionSite ? injectionSite.replace('_', ' ').toUpperCase() : 'Select a site'}
+            </Text>
+          </View>
+        </Card>
 
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          style={styles.notesInput}
-          placeholder="How are you feeling?"
-          value={note}
-          onChangeText={setNote}
-          multiline
-        />
+        <Card style={styles.card}>
+          <Text style={styles.cardLabel}>MEDICATION & DOSAGE</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {drugs.map(d => (
+                <TouchableOpacity 
+                  key={d} 
+                  onPress={() => setDrugName(d)}
+                  style={[styles.pillChip, isDark && { backgroundColor: '#333', borderColor: '#444' }, drugName === d && { backgroundColor: themeColor, borderColor: themeColor }]}
+                >
+                  <Text style={[styles.pillChipText, isDark && { color: '#ccc' }, drugName === d && { color: 'white' }]}>{d}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {dosageOptions.map(d => (
+                <TouchableOpacity 
+                  key={d} 
+                  onPress={() => setDosage(d)}
+                  style={[styles.pillChip, isDark && { backgroundColor: '#333', borderColor: '#444' }, dosage === d && { backgroundColor: themeColor, borderColor: themeColor }]}
+                >
+                  <Text style={[styles.pillChipText, isDark && { color: '#ccc' }, dosage === d && { color: 'white' }]}>{d} mg</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </Card>
 
-        <TouchableOpacity 
-          style={[styles.confirmButton, { backgroundColor: settings.characterColor }, loading && { opacity: 0.7 }]} 
-          onPress={handleConfirm}
-          disabled={loading}
-        >
-          <Text style={styles.confirmButtonText}>{loading ? 'SAVING...' : 'CONFIRM SHOT'}</Text>
+        <Btn full onPress={() => setStep(2)} color={themeColor}>
+          Next — Log Weight →
+        </Btn>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 15, alignItems: 'center' }}>
+          <Text style={{ color: '#aaa', fontWeight: 'bold' }}>Cancel</Text>
         </TouchableOpacity>
       </ScrollView>
+    </View>
+  )
+
+  const renderStep2 = () => (
+    <View style={[styles.stepContainer, { backgroundColor: appBg }]}>
+      <View style={[styles.header, { backgroundColor: headerBg }]}>
+        <TouchableOpacity onPress={() => setStep(1)} style={styles.backBtn}>
+          <Text style={{ fontSize: 20, color: subTextColor }}>←</Text>
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: textColor }]}>Log Weight</Text>
+        <View style={{ width: 40 }} />
+      </View>
+      
+      <View style={styles.centerStage}>
+        <Adi state="neutral" color={themeColor} size={100} />
+        <View style={{ alignItems: 'center', marginVertical: 20 }}>
+          <Text style={[styles.centerTitle, { color: textColor }]}>How much do you weigh today?</Text>
+          <Text style={styles.centerSub}>Optional — helps track your progress</Text>
+        </View>
+        
+        <View style={styles.weightPicker}>
+          <TouchableOpacity onPress={() => setWeight(w => String(Math.max(0, parseFloat(w || 0) - 1)))} style={[styles.weightCircle, { backgroundColor: `${themeColor}25` }]}>
+            <Text style={[styles.weightCircleText, { color: themeColor }]}>−</Text>
+          </TouchableOpacity>
+          <TextInput
+            style={[styles.weightLarge, { color: themeColor }]}
+            value={weight}
+            onChangeText={setWeight}
+            keyboardType="decimal-pad"
+            placeholder="0"
+            placeholderTextColor={isDark ? '#333' : '#eee'}
+          />
+          <TouchableOpacity onPress={() => setWeight(w => String(parseFloat(w || 0) + 1))} style={[styles.weightCircle, { backgroundColor: `${themeColor}25` }]}>
+            <Text style={[styles.weightCircleText, { color: themeColor }]}>+</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.lbsLabel}>lbs</Text>
+
+        <View style={{ width: '100%', gap: 10, marginTop: 40 }}>
+          <Btn full onPress={handleFinalConfirm} color={themeColor} disabled={loading}>
+            {loading ? 'Saving...' : 'Save & Confirm 🎉'}
+          </Btn>
+          <TouchableOpacity onPress={handleFinalConfirm} style={{ padding: 10, alignItems: 'center' }}>
+            <Text style={{ color: '#aaa', fontWeight: 'bold' }}>Skip weight</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  )
+
+  const renderStep3 = () => (
+    <View style={[styles.successContainer, { backgroundColor: appBg }]}>
+      <Adi state="excited" color={themeColor} size={150} />
+      <Text style={[styles.successTitle, { color: textColor }]}>Shot logged! 🎉</Text>
+      <Text style={styles.successSub}>
+        {drugName} · {injectionSite?.replace('_', ' ')} · {weight || '--'} lbs
+      </Text>
+      <Btn full onPress={() => navigation.navigate('Home')} color={themeColor} style={{ marginTop: 20 }}>
+        Back to Home
+      </Btn>
+    </View>
+  )
+
+  return (
+    <View style={[styles.container, { backgroundColor: appBg }]}>
+      {step === 1 && renderStep1()}
+      {step === 2 && renderStep2()}
+      {step === 3 && renderStep3()}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  title: { fontSize: 24, fontWeight: 'bold' },
-  close: { fontSize: 24, color: '#666' },
-  content: { padding: 20 },
-  label: { fontSize: 16, fontWeight: '700', marginBottom: 10, marginTop: 10, color: '#333' },
-  row: { flexDirection: 'row', marginBottom: 10 },
-  input: { backgroundColor: 'white', borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, alignItems: 'center' },
-  inputText: { fontSize: 16 },
-  scrollSelector: { marginBottom: 15 },
-  chipContainer: { flexDirection: 'row', gap: 10, paddingRight: 20 },
-  chip: { paddingHorizontal: 15, paddingVertical: 10, borderRadius: 12, backgroundColor: 'white', borderWidth: 1, borderColor: '#ddd' },
-  chipSelected: {},
-  chipText: { fontSize: 14, color: '#666' },
-  chipTextSelected: { color: 'white', fontWeight: 'bold' },
-  photoButton: { height: 120, backgroundColor: '#f0f0f0', borderRadius: 20, borderStyle: 'dashed', borderWidth: 2, borderColor: '#ddd', justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' },
-  photoButtonEmoji: { fontSize: 32, marginBottom: 5 },
-  photoButtonText: { color: '#999', fontWeight: '600' },
-  previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  weightInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 15, marginBottom: 15 },
-  weightInput: { flex: 1, paddingVertical: 14, fontSize: 18, fontWeight: 'bold' },
-  weightUnit: { fontSize: 16, color: '#999', fontWeight: '600' },
-  notesInput: { backgroundColor: 'white', borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 15, height: 100, textAlignVertical: 'top', marginBottom: 30 },
-  confirmButton: { paddingVertical: 18, borderRadius: 35, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 3 },
-  confirmButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  container: { flex: 1 },
+  scrollContent: { padding: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 60, paddingBottom: 15, paddingHorizontal: 20 },
+  headerTitle: { fontSize: 19, fontWeight: '900' },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', gap: 10, marginBottom: 15 },
+  dateTimeBox: { flex: 1, padding: 12, borderRadius: 16 },
+  miniLabel: { fontSize: 9, color: '#aaa', fontWeight: '800', marginBottom: 2 },
+  dateTimeText: { fontSize: 14, fontWeight: '800' },
+  card: { marginBottom: 15 },
+  cardLabel: { fontSize: 10, color: '#aaa', fontWeight: '800', marginBottom: 12, letterSpacing: 0.5 },
+  siteIndicator: { padding: 10, borderRadius: 12, alignItems: 'center', marginTop: 5 },
+  siteIndicatorText: { fontWeight: '900', fontSize: 13 },
+  pillChip: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 2, borderColor: '#eee', backgroundColor: '#f9f9f9' },
+  pillChipText: { fontSize: 13, fontWeight: '700', color: '#666' },
+  stepContainer: { flex: 1 },
+  centerStage: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30 },
+  centerTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center' },
+  centerSub: { fontSize: 13, color: '#aaa', fontWeight: '600', marginTop: 4 },
+  weightPicker: { flexDirection: 'row', alignItems: 'center', gap: 20, marginTop: 20 },
+  weightCircle: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
+  weightCircleText: { fontSize: 24, fontWeight: '900' },
+  weightLarge: { fontSize: 54, fontWeight: '900', minWidth: 100, textAlign: 'center' },
+  lbsLabel: { fontSize: 16, color: '#aaa', fontWeight: '700', marginTop: -5 },
+  successContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 15 },
+  successTitle: { fontSize: 26, fontWeight: '900' },
+  successSub: { fontSize: 14, color: '#aaa', fontWeight: '600', textAlign: 'center' },
 })

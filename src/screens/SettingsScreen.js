@@ -1,482 +1,180 @@
-import React, { useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Platform } from 'react-native'
-import DateTimePicker from '@react-native-community/datetimepicker'
-import { useSettings } from '../hooks/useSettings'
+import React from 'react'
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Switch, Alert, TextInput } from 'react-native'
 import { useAppState } from '../context/AppStateContext'
-import { HealthService } from '../lib/healthService'
 import * as Haptics from 'expo-haptics'
 
 export default function SettingsScreen({ navigation }) {
-  const { session } = useAppState()
-  const { settings, loading, saving, updateSettings } = useSettings()
-  const { resetAllData } = useAppState()
-  const [showTimePicker, setShowTimePicker] = useState(false)
+  const { session, settings, updateSettings, resetAllData, loading } = useAppState()
+  
+  // SINGLE SOURCE OF TRUTH
+  const isDark = !!settings.darkMode
+  const themeColor = settings.characterColor || '#7BAF8E'
 
-  const injectionDays = [
-    { value: 'monday', label: 'Mon' },
-    { value: 'tuesday', label: 'Tue' },
-    { value: 'wednesday', label: 'Wed' },
-    { value: 'thursday', label: 'Thu' },
-    { value: 'friday', label: 'Fri' },
-    { value: 'saturday', label: 'Sat' },
-    { value: 'sunday', label: 'Sun' },
-  ]
+  // Standardized dynamic styles - mapped to one variable (isDark)
+  const textColor = isDark ? '#FFFFFF' : '#1c1c1e'
+  const subTextColor = isDark ? '#888888' : '#666666'
+  const appBg = isDark ? '#000000' : '#F7F8FA'
+  const headerBg = isDark ? '#1c1c1e' : '#FFFFFF'
+  const cardBg = isDark ? '#1c1c1e' : '#FFFFFF'
+  const borderColor = isDark ? '#333333' : '#f0f0f2'
+  const labelColor = isDark ? '#555555' : '#aaaaaa'
 
-  const characterColors = [
-    '#7BAF8E', // Original Green
-    '#7B8EAF', // Blue
-    '#AF7B9C', // Pink
-    '#AF9C7B', // Amber
-    '#7BAFAF', // Teal
-  ]
-
-  const drugOptions = [
-    'Semaglutide (Wegovy)',
-    'Semaglutide (Ozempic)',
-    'Tirzepatide (Zepbound)',
-    'Tirzepatide (Mounjaro)',
-    'Liraglutide (Saxenda)',
-  ]
-
-  const dosageOptions = [0.25, 0.5, 0.75, 1.0, 1.7, 2.0, 2.4, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0]
-
-  // Convert "HH:MM" string to Date object for picker
-  const getPickerDate = () => {
-    const [hours, minutes] = (settings.reminderTime || '09:00').split(':').map(Number)
-    const d = new Date()
-    d.setHours(hours, minutes, 0, 0)
-    return d
-  }
-
-  const handleResetData = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-    Alert.alert(
-      'Reset All Data', 
-      'This will delete all your injection logs and reset your streaks. This cannot be undone. Are you sure?', 
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Reset Everything', 
-          style: 'destructive',
-          onPress: async () => {
-            const success = await resetAllData()
-            if (success) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-              Alert.alert('Success', 'All data has been cleared.')
-            }
-          }
-        },
-      ]
-    )
-  }
+  const accents = ['#7BAF8E', '#7B8EAF', '#AF7B9C', '#AF9C7B', '#7BAFAF']
 
   const handleUpdate = async (updates) => {
     Haptics.selectionAsync()
-    const success = await updateSettings(updates)
-    if (!success) {
-      Alert.alert('Error', 'Failed to update settings')
-    }
+    await updateSettings(updates)
   }
 
-  const handleManualSync = async () => {
-    Haptics.selectionAsync()
-    const result = await HealthService.performFullSync()
-    if (result.success) {
-      await handleUpdate({ lastHealthSync: result.timestamp })
-      Alert.alert('Sync Complete', 'Your health data has been successfully synchronized.')
-    }
-  }
-
-  const onTimeChange = (event, selectedDate) => {
-    setShowTimePicker(false)
-    if (selectedDate) {
-      const hours = selectedDate.getHours().toString().padStart(2, '0')
-      const minutes = selectedDate.getMinutes().toString().padStart(2, '0')
-      handleUpdate({ reminderTime: `${hours}:${minutes}` })
-    }
-  }
-
-  const isHealthSupported = HealthService.isSupported()
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text>Loading settings...</Text>
-      </View>
-    )
-  }
+  if (loading) return (
+    <View style={[styles.container, { backgroundColor: appBg, justifyContent: 'center', alignItems: 'center' }]}>
+      <Text style={{ color: textColor }}>Loading Settings...</Text>
+    </View>
+  )
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Settings</Text>
+    <View style={[styles.container, { backgroundColor: appBg }]}>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: borderColor, borderBottomWidth: 1 }]}>
+        <Text style={[styles.headerTitle, { color: textColor }]}>Settings</Text>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.close}>✕</Text>
+          <Text style={{ fontSize: 24, color: labelColor }}>✕</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
-        {/* Account Quick Row */}
-        <TouchableOpacity style={styles.section} onPress={() => navigation.navigate('Profile')}>
-          <View style={styles.accountRow}>
-            <View style={[styles.avatarSmall, { backgroundColor: settings.characterColor }]}>
-              <Text style={styles.avatarTextSmall}>
-                {session?.user?.email?.[0].toUpperCase() || 'A'}
-              </Text>
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.content, { backgroundColor: appBg }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.sectionLabel, { color: labelColor }]}>PROFILE</Text>
+        <View style={[styles.cardReplacement, { backgroundColor: cardBg, borderColor: borderColor }]}>
+          <TouchableOpacity style={styles.profileRow} onPress={() => navigation.navigate('Profile')}>
+            <View style={[styles.avatar, { backgroundColor: themeColor }]}>
+              <Text style={styles.avatarText}>{session?.user?.email?.[0].toUpperCase() || 'S'}</Text>
             </View>
             <View style={{ flex: 1, marginLeft: 15 }}>
-              <Text style={styles.accountTitle}>My Profile</Text>
-              <Text style={styles.accountSubtitle}>{session?.user?.email || 'Guest Account'}</Text>
+              <Text style={[styles.profileName, { color: textColor }]}>{settings.nickname || session?.user?.email?.split('@')[0] || 'Guest'}</Text>
+              <Text style={[styles.profileEmail, { color: subTextColor }]}>{session?.user?.email || 'user@email.com'}</Text>
             </View>
-            <Text style={styles.chevron}>›</Text>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Injection Schedule</Text>
-          
-          <Text style={styles.label}>Weekly Day</Text>
-          <View style={styles.daysContainer}>
-            {injectionDays.map(day => (
-              <TouchableOpacity
-                key={day.value}
-                style={[
-                  styles.dayButton,
-                  settings.injectionDay === day.value && styles.dayButtonSelected
-                ]}
-                onPress={() => handleUpdate({ injectionDay: day.value })}
-              >
-                <Text style={[
-                  styles.dayText,
-                  settings.injectionDay === day.value && styles.dayTextSelected
-                ]}>
-                  {day.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.label}>Reminder Time</Text>
-          <TouchableOpacity 
-            style={styles.timeButton} 
-            onPress={() => setShowTimePicker(true)}
-          >
-            <Text style={styles.timeText}>{settings.reminderTime}</Text>
+            <Text style={{ fontSize: 20, color: labelColor }}>›</Text>
           </TouchableOpacity>
-
-          {showTimePicker && (
-            <DateTimePicker
-              value={getPickerDate()}
-              mode="time"
-              is24Hour={false}
-              onChange={onTimeChange}
-            />
-          )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Adi's Look</Text>
-          <Text style={styles.label}>Character Color</Text>
-          <View style={styles.colorsContainer}>
-            {characterColors.map(color => (
-              <TouchableOpacity
-                key={color}
-                style={[
-                  styles.colorCircle,
-                  { backgroundColor: color },
-                  settings.characterColor === color && styles.colorCircleSelected
-                ]}
-                onPress={() => handleUpdate({ characterColor: color })}
+        <Text style={[styles.sectionLabel, { color: labelColor }]}>PERSONALIZATION</Text>
+        <View style={[styles.cardReplacement, { backgroundColor: cardBg, borderColor: borderColor, padding: 16 }]}>
+           <Text style={[styles.miniLabel, { color: subTextColor }]}>WHAT SHOULD ADI CALL YOU?</Text>
+           <TextInput
+              style={[styles.nicknameInput, { borderColor: isDark ? '#444' : `${themeColor}30`, color: textColor }]}
+              placeholder="Enter nickname"
+              placeholderTextColor={isDark ? '#444' : '#ccc'}
+              value={settings.nickname}
+              onChangeText={(v) => updateSettings({ nickname: v })}
+              autoCapitalize="words"
+           />
+        </View>
+
+        <Text style={[styles.sectionLabel, { color: labelColor }]}>MEDICATION</Text>
+        <View style={[styles.cardReplacement, { backgroundColor: cardBg, borderColor: borderColor }]}>
+          {/* My Medication Row */}
+          <View style={[styles.row, { borderBottomColor: borderColor }]}>
+            <View style={[styles.rowIconBox, { backgroundColor: isDark ? `${themeColor}40` : `${themeColor}20` }]}><Text style={{ fontSize: 18 }}>💉</Text></View>
+            <Text style={[styles.rowLabel, { color: textColor }]}>My Medication</Text>
+            <Text style={[styles.rowValue, { color: subTextColor }]}>{`${settings.preferredDrug?.split(' ')[0] || 'GLP-1'} ${settings.preferredDosage}mg`}</Text>
+            <Text style={{ fontSize: 20, color: labelColor }}>›</Text>
+          </View>
+          {/* Dose Day Row */}
+          <View style={[styles.row, { borderBottomColor: borderColor }]}>
+            <View style={[styles.rowIconBox, { backgroundColor: isDark ? `${themeColor}40` : `${themeColor}20` }]}><Text style={{ fontSize: 18 }}>📅</Text></View>
+            <Text style={[styles.rowLabel, { color: textColor }]}>Dose Day</Text>
+            <Text style={[styles.rowValue, { color: subTextColor }]}>{settings.injectionDay?.charAt(0).toUpperCase() + settings.injectionDay?.slice(1)}</Text>
+            <Text style={{ fontSize: 20, color: labelColor }}>›</Text>
+          </View>
+          {/* Reminder Time Row */}
+          <View style={[styles.row, { borderBottomColor: 'transparent' }]}>
+            <View style={[styles.rowIconBox, { backgroundColor: isDark ? `${themeColor}40` : `${themeColor}20` }]}><Text style={{ fontSize: 18 }}>🔔</Text></View>
+            <Text style={[styles.rowLabel, { color: textColor }]}>Reminder Time</Text>
+            <Text style={[styles.rowValue, { color: subTextColor }]}>{settings.reminderTime}</Text>
+            <Text style={{ fontSize: 20, color: labelColor }}>›</Text>
+          </View>
+        </View>
+
+        <Text style={[styles.sectionLabel, { color: labelColor }]}>PREFERENCES</Text>
+        <View style={[styles.cardReplacement, { backgroundColor: cardBg, borderColor: borderColor }]}>
+          <View style={styles.colorRow}>
+             <View style={[styles.rowIconBox, { backgroundColor: isDark ? `${themeColor}40` : `${themeColor}20` }]}><Text style={{ fontSize: 18 }}>🎨</Text></View>
+             <Text style={[styles.rowLabel, { color: textColor }]}>Adi's Color</Text>
+          </View>
+          <View style={[styles.colorGrid, { borderBottomColor: borderColor }]}>
+            {accents.map(c => (
+              <TouchableOpacity 
+                key={c} 
+                onPress={() => handleUpdate({ characterColor: c })}
+                style={[styles.colorCircle, { backgroundColor: c }, themeColor === c && { borderWidth: 3, borderColor: isDark ? '#fff' : '#000' }]} 
               />
             ))}
           </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Medication</Text>
-          <Text style={styles.label}>Default Medication</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.drugsScroll}>
-            <View style={styles.drugsContainer}>
-              {drugOptions.map(drug => (
-                <TouchableOpacity
-                  key={drug}
-                  style={[
-                    styles.drugChip,
-                    settings.preferredDrug === drug && [styles.drugChipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
-                  ]}
-                  onPress={() => handleUpdate({ preferredDrug: drug })}
-                >
-                  <Text style={[
-                    styles.drugText,
-                    settings.preferredDrug === drug && styles.drugTextSelected
-                  ]}>
-                    {drug}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-
-          <Text style={styles.label}>Default Dosage (mg)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.drugsScroll}>
-            <View style={styles.drugsContainer}>
-              {dosageOptions.map(opt => (
-                <TouchableOpacity
-                  key={opt}
-                  style={[
-                    styles.drugChip,
-                    settings.preferredDosage === opt && [styles.drugChipSelected, { backgroundColor: settings.characterColor, borderColor: settings.characterColor }]
-                  ]}
-                  onPress={() => handleUpdate({ preferredDosage: opt })}
-                >
-                  <Text style={[
-                    styles.drugText,
-                    settings.preferredDosage === opt && styles.drugTextSelected
-                  ]}>
-                    {opt}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Inventory & Refills</Text>
-          <View style={styles.row}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.rowLabel}>Doses on Hand</Text>
-              <Text style={styles.rowSubtitle}>Adi will nudge you when you're low.</Text>
-            </View>
-            <View style={styles.counterContainer}>
-              <TouchableOpacity 
-                style={styles.counterButton}
-                onPress={() => handleUpdate({ dosesOnHand: Math.max(0, settings.dosesOnHand - 1) })}
-              >
-                <Text style={styles.counterButtonText}>-</Text>
-              </TouchableOpacity>
-              <Text style={styles.counterValue}>{settings.dosesOnHand}</Text>
-              <TouchableOpacity 
-                style={styles.counterButton}
-                onPress={() => handleUpdate({ dosesOnHand: settings.dosesOnHand + 1 })}
-              >
-                <Text style={styles.counterButtonText}>+</Text>
-              </TouchableOpacity>
-            </View>
+          {/* Health Sync Row */}
+          <View style={[styles.row, { borderBottomColor: borderColor }]}>
+            <View style={[styles.rowIconBox, { backgroundColor: isDark ? `${themeColor}40` : `${themeColor}20` }]}><Text style={{ fontSize: 18 }}>❤️</Text></View>
+            <Text style={[styles.rowLabel, { color: textColor }]}>Health App Sync</Text>
+            <Switch value={!!settings.healthSyncEnabled} onValueChange={(v) => handleUpdate({ healthSyncEnabled: v })} trackColor={{ true: themeColor }} />
           </View>
-
-          <View style={styles.row}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.rowLabel}>Refill Alert at</Text>
-              <Text style={styles.rowSubtitle}>Set your preferred threshold.</Text>
-            </View>
-            <View style={styles.counterContainer}>
-              <TouchableOpacity 
-                style={styles.counterButton}
-                onPress={() => handleUpdate({ refillThreshold: Math.max(1, settings.refillThreshold - 1) })}
-              >
-                <Text style={styles.counterButtonText}>-</Text>
-              </TouchableOpacity>
-              <Text style={styles.counterValue}>{settings.refillThreshold}</Text>
-              <TouchableOpacity 
-                style={styles.counterButton}
-                onPress={() => handleUpdate({ refillThreshold: settings.refillThreshold + 1 })}
-              >
-                <Text style={styles.counterButtonText}>+</Text>
-              </TouchableOpacity>
-            </View>
+          {/* Dark Mode Row */}
+          <View style={[styles.row, { borderBottomColor: 'transparent' }]}>
+            <View style={[styles.rowIconBox, { backgroundColor: isDark ? `${themeColor}40` : `${themeColor}20` }]}><Text style={{ fontSize: 18 }}>🌙</Text></View>
+            <Text style={[styles.rowLabel, { color: textColor }]}>Dark Mode</Text>
+            <Switch value={isDark} onValueChange={(v) => handleUpdate({ darkMode: v })} trackColor={{ true: themeColor }} />
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Health Integration</Text>
-          <View style={styles.row}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.rowLabel}>Sync with Health Apps</Text>
-              <Text style={styles.rowSubtitle}>
-                {Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit / Health Connect'}
-              </Text>
-            </View>
-            <Switch 
-              value={settings.healthSyncEnabled}
-              onValueChange={(val) => handleUpdate({ healthSyncEnabled: val })}
-              trackColor={{ true: '#7BAF8E' }}
-            />
-          </View>
-
-          {settings.healthSyncEnabled && (
-            <View style={styles.syncContainer}>
-              <Text style={styles.syncStatus}>
-                Last synced: {settings.lastHealthSync ? new Date(settings.lastHealthSync).toLocaleString() : 'Never'}
-              </Text>
-              <TouchableOpacity onPress={handleManualSync}>
-                <Text style={[styles.syncLink, { color: settings.characterColor }]}>Sync Now</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {!isHealthSupported && (
-            <View style={styles.warningBox}>
-              <Text style={styles.warningText}>
-                ⚠️ Native health sync is not available in Expo Go. Use a development build to enable this feature.
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
-          
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Enabled</Text>
-            <Switch 
-              value={settings.notificationsEnabled}
-              onValueChange={(val) => handleUpdate({ notificationsEnabled: val })}
-              trackColor={{ true: '#7BAF8E' }}
-            />
-          </View>
-
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Overdue Alerts</Text>
-            <Switch 
-              value={settings.overdueEnabled}
-              onValueChange={(val) => handleUpdate({ overdueEnabled: val })}
-              trackColor={{ true: '#7BAF8E' }}
-            />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Developer Tools</Text>
-          <TouchableOpacity style={styles.devButton} onPress={handleResetData}>
-            <Text style={styles.devButtonText}>Reset All Injection Data</Text>
+        <Text style={[styles.sectionLabel, { color: labelColor }]}>DATA</Text>
+        <View style={[styles.cardReplacement, { backgroundColor: cardBg, borderColor: borderColor }]}>
+          <TouchableOpacity style={[styles.row, { borderBottomColor: borderColor }]} onPress={() => navigation.navigate('History')}>
+            <View style={[styles.rowIconBox, { backgroundColor: isDark ? `${themeColor}40` : `${themeColor}20` }]}><Text style={{ fontSize: 18 }}>📋</Text></View>
+            <Text style={[styles.rowLabel, { color: textColor }]}>Export for Doctor</Text>
+            <Text style={{ fontSize: 20, color: labelColor }}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.row} onPress={() => {
+            Alert.alert("Reset Data", "Wipe all logs? This cannot be undone.", [
+              { text: "Cancel", style: "cancel" },
+              { text: "Reset", style: "destructive", onPress: resetAllData }
+            ])
+          }}>
+            <View style={[styles.rowIconBox, { backgroundColor: 'rgba(231, 76, 60, 0.2)' }]}><Text style={{ fontSize: 18 }}>🗑️</Text></View>
+            <Text style={[styles.rowLabel, { color: '#E74C3C' }]}>Reset All Data</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity style={styles.signOutBtn} onPress={() => navigation.navigate('Profile')}>
+          <Text style={[styles.signOutText, { color: labelColor }]}>Manage Account</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9f9f9' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: 'white',
-  },
-  title: { fontSize: 24, fontWeight: 'bold' },
-  close: { fontSize: 24, color: '#666' },
+  container: { flex: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 60, paddingBottom: 20, paddingHorizontal: 20 },
+  headerTitle: { fontSize: 22, fontWeight: '900' },
   content: { padding: 20, paddingBottom: 60 },
-  section: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  accountRow: { flexDirection: 'row', alignItems: 'center' },
-  avatarSmall: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  avatarTextSmall: { fontSize: 20, fontWeight: 'bold', color: 'white' },
-  accountTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  accountSubtitle: { fontSize: 13, color: '#999' },
-  chevron: { fontSize: 20, color: '#CCC' },
-  sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 15, color: '#333' },
-  label: { fontSize: 14, color: '#666', marginBottom: 10, fontWeight: '600' },
-  daysContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  colorsContainer: { flexDirection: 'row', gap: 15, marginBottom: 10 },
-  drugsScroll: { marginBottom: 10 },
-  drugsContainer: { flexDirection: 'row', gap: 10, paddingRight: 20 },
-  drugChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  drugChipSelected: {
-    // Background color handled dynamically
-  },
-  drugText: {
-    fontSize: 13,
-    color: '#666',
-  },
-  drugTextSelected: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  colorCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  colorCircleSelected: {
-    borderColor: '#333',
-    transform: [{ scale: 1.1 }],
-  },
-  dayButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dayButtonSelected: { backgroundColor: '#7BAF8E' },
-  dayText: { fontSize: 12, fontWeight: '600' },
-  dayTextSelected: { color: 'white' },
-  timeButton: {
-    backgroundColor: '#f0f0f0',
-    padding: 15,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  timeText: { fontSize: 18, fontWeight: '700', color: '#333' },
-  row: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  rowLabel: { fontSize: 16, color: '#333' },
-  rowSubtitle: { fontSize: 12, color: '#999', marginTop: 2 },
-  counterContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#f5f5f5', 
-    borderRadius: 12,
-    padding: 4,
-  },
-  counterButton: { 
-    width: 34, 
-    height: 34, 
-    backgroundColor: 'white', 
-    borderRadius: 8, 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 1,
-  },
-  counterButtonText: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  counterValue: { paddingHorizontal: 15, fontSize: 16, fontWeight: 'bold', color: '#333' },
-  syncContainer: { marginTop: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  syncStatus: { fontSize: 12, color: '#999' },
-  syncLink: { fontSize: 12, fontWeight: 'bold' },
-  warningBox: { marginTop: 15, padding: 12, backgroundColor: '#FFF9C4', borderRadius: 10 },
-  warningText: { fontSize: 11, color: '#F57F17', lineHeight: 16 },
-  devButton: { padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 12 },
-  devButtonText: { color: '#666', fontSize: 14, fontWeight: '600' },
-  dangerButton: { padding: 15, alignItems: 'center' },
-  dangerButtonText: { color: '#FF5252', fontWeight: 'bold', fontSize: 16 },
+  sectionLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1, paddingVertical: 12, paddingLeft: 4, textTransform: 'uppercase' },
+  cardReplacement: { borderRadius: 20, overflow: 'hidden', marginBottom: 20, borderWidth: 1 },
+  profileRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
+  avatar: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: 'white', fontSize: 20, fontWeight: '900' },
+  profileName: { fontSize: 16, fontWeight: '800' },
+  profileEmail: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  row: { flexDirection: 'row', alignItems: 'center', padding: 13, paddingHorizontal: 16, borderBottomWidth: 1 },
+  rowIconBox: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  rowLabel: { flex: 1, fontSize: 15, fontWeight: '700' },
+  rowValue: { fontSize: 14, fontWeight: '600', marginRight: 10 },
+  colorRow: { flexDirection: 'row', alignItems: 'center', padding: 13, paddingHorizontal: 16 },
+  colorGrid: { flexDirection: 'row', gap: 12, paddingLeft: 62, paddingBottom: 15, borderBottomWidth: 1 },
+  colorCircle: { width: 28, height: 28, borderRadius: 14 },
+  nicknameInput: { height: 48, borderWidth: 2, borderRadius: 12, paddingHorizontal: 15, fontSize: 16, fontWeight: '700' },
+  miniLabel: { fontSize: 10, fontWeight: '800', marginBottom: 10, letterSpacing: 0.5 },
+  signOutBtn: { marginTop: 30, alignItems: 'center' },
+  signOutText: { fontSize: 15, fontWeight: '700' },
 })

@@ -5,14 +5,23 @@ import { useInjections } from '../hooks/useInjections'
 import { useSettings } from '../hooks/useSettings'
 import { MotiView } from 'moti'
 import * as Haptics from 'expo-haptics'
-import { format, parseISO, startOfMonth, eachMonthOfInterval, subMonths } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { generateDoctorReport } from '../lib/pdfGenerator'
+import SkeletonLoader from '../components/SkeletonLoader'
+import StatPill from '../components/StatPill'
+import Card from '../components/Card'
+import Btn from '../components/Btn'
 
 const { width } = Dimensions.get('window')
 
 export default function HistoryScreen({ navigation }) {
-  const { injections, weightEntries, sideEffects, streaks, loading } = useInjections()
+  const { injections, weightEntries, sideEffects, loading } = useInjections()
   const { settings } = useSettings()
+  const isDark = settings.darkMode
+  const themeColor = settings.characterColor || '#7BAF8E'
+  const textColor = isDark ? 'white' : '#1c1c1e'
+  const subTextColor = isDark ? '#aaa' : '#666'
+  const cardBg = isDark ? '#1c1c1e' : 'white'
 
   const handleExport = async () => {
     try {
@@ -30,28 +39,25 @@ export default function HistoryScreen({ navigation }) {
   }
 
   const chartConfig = useMemo(() => ({
-    backgroundGradientFrom: "#fff",
-    backgroundGradientTo: "#fff",
-    color: (opacity = 1) => {
-      // Use the theme color for the chart line
-      return settings.characterColor ? `${settings.characterColor}${Math.floor(opacity * 255).toString(16).padStart(2, '0')}` : `rgba(123, 175, 142, ${opacity})`
-    },
-    labelColor: (opacity = 1) => `rgba(100, 100, 100, ${opacity})`,
+    backgroundGradientFrom: cardBg,
+    backgroundGradientTo: cardBg,
+    color: (opacity = 1) => themeColor ? `${themeColor}${Math.floor(opacity * 255).toString(16).padStart(2, '0')}` : `rgba(123, 175, 142, ${opacity})`,
+    labelColor: (opacity = 1) => isDark ? `rgba(255, 255, 255, ${opacity})` : `rgba(100, 100, 100, ${opacity})`,
     strokeWidth: 2,
-    barPercentage: 0.5,
-    useShadowColorFromDataset: false
-  }), [settings.characterColor]);
+  }), [themeColor, isDark, cardBg]);
 
   const stats = useMemo(() => {
-    if (!injections.length && !weightEntries.length && !sideEffects.length) {
-      return { onTime: 0, siteData: [], currentWeight: '--', topSymptom: '--' }
-    }
-    
-    // Calculate on-time rate
     const onTimeCount = injections.filter(i => i.logged_at && i.scheduled_for === i.logged_at.split('T')[0]).length
     const onTimeRate = injections.length > 0 ? Math.round((onTimeCount / injections.length) * 100) : 0
+    const currentWeight = weightEntries.length > 0 ? weightEntries[0].weight : '--'
+    
+    let lostWeight = '0'
+    if (weightEntries.length > 1) {
+      const start = parseFloat(weightEntries[weightEntries.length - 1].weight)
+      const current = parseFloat(weightEntries[0].weight)
+      lostWeight = (start - current).toFixed(1)
+    }
 
-    // Calculate site distribution
     const siteCounts = injections.reduce((acc, curr) => {
       if (curr.injection_site) {
         acc[curr.injection_site] = (acc[curr.injection_site] || 0) + 1
@@ -59,295 +65,150 @@ export default function HistoryScreen({ navigation }) {
       return acc
     }, {})
 
-    const siteColors = [settings.characterColor || '#7BAF8E', '#7B8EAF', '#AF7B9C', '#AF9C7B', '#7BAFAF']
+    const siteColors = [themeColor, '#7B8EAF', '#AF7B9C', '#AF9C7B', '#7BAFAF', '#F5A623']
     const siteData = Object.keys(siteCounts).map((key, idx) => ({
       name: key.replace('_', ' '),
       population: siteCounts[key],
       color: siteColors[idx % siteColors.length],
-      legendFontColor: '#7F7F7F',
-      legendFontSize: 12
+      legendFontColor: isDark ? '#aaa' : '#7F7F7F',
+      legendFontSize: 10
     }))
 
-    const currentWeight = weightEntries.length > 0 ? weightEntries[0].weight : '--'
+    return { onTime: onTimeRate, currentWeight, lostWeight, siteData }
+  }, [injections, weightEntries, themeColor, isDark])
 
-    // Calculate top symptom
-    const symptomCounts = sideEffects.reduce((acc, curr) => {
-      acc[curr.symptom] = (acc[curr.symptom] || 0) + 1
-      return acc
-    }, {})
-    const topSymptom = Object.keys(symptomCounts).sort((a, b) => symptomCounts[b] - symptomCounts[a])[0] || '--'
-
-    return { onTime: onTimeRate, siteData, currentWeight, topSymptom }
-  }, [injections, weightEntries, sideEffects, settings.characterColor])
-
-  // Prep line chart data (last 6 months)
-  const chartData = useMemo(() => {
-    const last6Months = eachMonthOfInterval({
-      start: subMonths(new Date(), 5),
-      end: new Date()
-    })
-
-    const labels = last6Months.map(m => format(m, 'MMM'))
-    const data = last6Months.map(m => {
-      const monthStart = startOfMonth(m)
-      const shotsInMonth = injections.filter(i => {
-        const shotDate = parseISO(i.scheduled_for)
-        return shotDate >= monthStart && shotDate <= m
-      }).length
-      return shotsInMonth
-    })
-
-    return { labels, datasets: [{ data }] }
-  }, [injections])
-
-  // Prep weight chart data
   const weightChartData = useMemo(() => {
     if (weightEntries.length < 2) return null
-    const recentWeights = [...weightEntries].slice(0, 7).reverse()
-    const labels = recentWeights.map(w => format(parseISO(w.logged_at), 'MM/dd'))
+    const recentWeights = [...weightEntries].slice(0, 6).reverse()
+    const labels = recentWeights.map(w => format(parseISO(w.logged_at), 'MMM'))
     const data = recentWeights.map(w => parseFloat(w.weight))
     return { labels, datasets: [{ data }] }
   }, [weightEntries])
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading Dashboard...</Text>
+      <View style={[styles.container, isDark && { backgroundColor: '#000' }, { paddingHorizontal: 20 }]}>
+        <View style={styles.header}>
+          <SkeletonLoader width={150} height={32} />
+          <SkeletonLoader width={30} height={30} />
+        </View>
+        <View style={styles.statsRow}>
+          <SkeletonLoader width={(width-60)/3} height={60} borderRadius={14} />
+          <SkeletonLoader width={(width-60)/3} height={60} borderRadius={14} />
+          <SkeletonLoader width={(width-60)/3} height={60} borderRadius={14} />
+        </View>
+        <SkeletonLoader width="100%" height={200} borderRadius={20} style={{ marginTop: 20 }} />
       </View>
     )
   }
 
-  const renderHistoryItem = (item) => (
-    <MotiView 
-      key={item.id}
-      from={{ opacity: 0, translateX: -20 }}
-      animate={{ opacity: 1, translateX: 0 }}
-      style={[styles.historyCard, { borderLeftColor: settings.characterColor }]}
-    >
-      <View style={styles.cardMain}>
-        <View style={{ flex: 1 }}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardDate}>{format(parseISO(item.scheduled_for), 'EEEE, MMM d')}</Text>
-            <Text style={[styles.cardStatus, { color: settings.characterColor }]}>On Time</Text>
-          </View>
-          <View style={styles.cardFooter}>
-            <Text style={styles.cardDrug}>💊 {item.drug_name || 'Unspecified'}</Text>
-            <Text style={styles.cardSite}>📍 {item.injection_site?.replace('_', ' ') || 'Not specified'}</Text>
-            {item.note && <Text style={styles.cardNote}>" {item.note} "</Text>}
-          </View>
-        </View>
-        
-        {item.photo_url && (
-          <Image source={{ uri: item.photo_url }} style={styles.cardThumbnail} />
-        )}
-      </View>
-    </MotiView>
-  )
-
-  const renderSideEffectItem = (item) => (
-    <MotiView 
-      key={item.id}
-      from={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      style={styles.symptomCard}
-    >
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardSymptom}>🤒 {item.symptom}</Text>
-        <Text style={[styles.cardSeverity, { color: item.severity > 3 ? '#FF5252' : '#FF9800' }]}>
-          Level {item.severity}
-        </Text>
-      </View>
-      <Text style={styles.cardTime}>{format(parseISO(item.logged_at), 'MMM d, h:mm a')}</Text>
-      {item.notes && <Text style={styles.cardNote}>"{item.notes}"</Text>}
-    </MotiView>
-  )
-
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, isDark && { backgroundColor: '#000' }]}>
+      <View style={[styles.header, isDark && { backgroundColor: '#1c1c1e' }]}>
         <View>
-          <Text style={styles.title}>Dashboard</Text>
-          <TouchableOpacity onPress={handleExport} style={styles.exportButton}>
-            <Text style={[styles.exportText, { color: settings.characterColor }]}>Export PDF 📄</Text>
-          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: textColor }]}>Your Journey</Text>
+          <Text style={[styles.headerSub, { color: subTextColor }]}>{injections.length} total injections</Text>
         </View>
-        <TouchableOpacity 
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-            navigation.goBack()
-          }}
-        >
-          <Text style={styles.close}>✕</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={{ fontSize: 24, color: '#aaa' }}>✕</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 60 }]}>
-        {/* Quick Stats */}
-        <View style={styles.statsGrid}>
-          <View style={styles.statBox}>
-            <Text style={styles.statEmoji}>🔥</Text>
-            <Text style={styles.statValue}>{streaks.current}</Text>
-            <Text style={styles.statLabel}>Streak</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statEmoji}>⚖️</Text>
-            <Text style={styles.statValue}>{stats.currentWeight}</Text>
-            <Text style={styles.statLabel}>Weight</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statEmoji}>🤒</Text>
-            <Text style={styles.statValue} numberOfLines={1}>{stats.topSymptom}</Text>
-            <Text style={styles.statLabel}>Top Issue</Text>
-          </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.statsRow}>
+          <StatPill label="Total shots" value={injections.length} themeColor={themeColor} />
+          <StatPill label="On-time" value={`${stats.onTime}%`} themeColor={themeColor} />
+          <StatPill label="Lost" value={`${stats.lostWeight} lbs`} themeColor={themeColor} />
         </View>
 
-        {/* Weight Trend Chart */}
-        {weightChartData && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Weight Journey (lbs)</Text>
+        <Card style={styles.card}>
+          <Text style={[styles.cardLabel, { color: subTextColor }]}>WEIGHT TREND — 6 MONTHS</Text>
+          {weightChartData ? (
             <LineChart
               data={weightChartData}
-              width={width - 40}
-              height={180}
-              chartConfig={{
-                ...chartConfig,
-                color: (opacity = 1) => `rgba(123, 175, 142, ${opacity})`,
-              }}
+              width={width - 70}
+              height={120}
+              chartConfig={chartConfig}
               bezier
               style={styles.chart}
             />
+          ) : (
+            <View style={styles.emptyChart}><Text style={{ color: subTextColor }}>Add weigh-ins to see your trend!</Text></View>
+          )}
+          <View style={styles.weightSummary}>
+            <Text style={[styles.currentWeightText, { color: textColor }]}>{stats.currentWeight} lbs</Text>
+            <Text style={[styles.weightChange, { color: parseFloat(stats.lostWeight) >= 0 ? '#4caf7d' : '#E74C3C' }]}>
+              {parseFloat(stats.lostWeight) >= 0 ? '↓' : '↑'} {Math.abs(parseFloat(stats.lostWeight))} lbs total
+            </Text>
           </View>
-        )}
-
-        {/* Injection Chart */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Injection Activity</Text>
-          <LineChart
-            data={chartData}
-            width={width - 40}
-            height={180}
-            chartConfig={chartConfig}
-            bezier
-            style={styles.chart}
-          />
-        </View>
+        </Card>
 
         {stats.siteData.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Site Rotation</Text>
-            <PieChart
-              data={stats.siteData}
-              width={width - 40}
-              height={180}
-              chartConfig={chartConfig}
-              accessor="population"
-              backgroundColor="transparent"
-              paddingLeft="15"
-              absolute
-            />
-          </View>
-        )}
-
-        {/* Side Effects History */}
-        {sideEffects.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Symptoms</Text>
-            {sideEffects.slice(0, 5).map(renderSideEffectItem)}
-          </View>
-        )}
-
-        {/* Recent History */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Logs</Text>
-          {injections.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No shots logged yet. Adi is waiting!</Text>
+          <Card style={styles.card}>
+            <Text style={[styles.cardLabel, { color: subTextColor }]}>SITE ROTATION</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <PieChart
+                data={stats.siteData}
+                width={width - 60}
+                height={150}
+                chartConfig={chartConfig}
+                accessor="population"
+                backgroundColor="transparent"
+                paddingLeft="15"
+                absolute
+                hasLegend={true}
+              />
             </View>
-          ) : (
-            injections.slice(0, 10).map(renderHistoryItem)
-          )}
+          </Card>
+        )}
+
+        <View style={styles.listSection}>
+          <Text style={[styles.cardLabel, { color: subTextColor }]}>RECENT INJECTIONS</Text>
+          <View style={{ gap: 8 }}>
+            {injections.length === 0 ? (
+              <Text style={[styles.emptyText, { color: subTextColor }]}>No shots logged yet.</Text>
+            ) : (
+              injections.slice(0, 10).map((item) => (
+                <Card key={item.id} style={styles.historyCard}>
+                  <View style={[styles.historyIconBox, isDark && { backgroundColor: '#333' }]}><Text style={{ fontSize: 17 }}>💉</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.historyTitle, { color: textColor }]}>{item.drug_name || 'GLP-1'} · {item.injection_site?.replace('_', ' ')}</Text>
+                    <Text style={[styles.historyDate, { color: subTextColor }]}>{format(parseISO(item.scheduled_for), 'MMM d, yyyy')}</Text>
+                  </View>
+                  <Text style={[styles.historyWeight, { color: themeColor }]}>{item.weight_at_log || '--'} lbs</Text>
+                </Card>
+              ))
+            )}
+          </View>
         </View>
+
+        <Btn full onPress={handleExport} color={themeColor} style={{ marginTop: 20 }}>
+          📤 Export for Doctor
+        </Btn>
       </ScrollView>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9f9f9' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { color: '#7BAF8E', fontWeight: 'bold' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: 'white',
-  },
-  exportButton: {
-    marginTop: 5,
-  },
-  exportText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  title: { fontSize: 24, fontWeight: 'bold' },
-  close: { fontSize: 24, color: '#666' },
-  scrollContent: { padding: 20, paddingBottom: 60 },
-  statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 25 },
-  statBox: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 15,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  statEmoji: { fontSize: 20, marginBottom: 5 },
-  statValue: { fontSize: 16, fontWeight: 'bold', color: '#333', textAlign: 'center' },
-  statLabel: { fontSize: 10, color: '#999', textTransform: 'uppercase', fontWeight: 'bold' },
-  section: { marginBottom: 30 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 15, color: '#333' },
-  chart: { borderRadius: 16, marginVertical: 8 },
-  historyCard: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 15,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-  },
-  cardMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 15,
-  },
-  cardThumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: '#eee',
-  },
-  symptomCard: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 15,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF9800',
-  },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  cardSymptom: { fontWeight: 'bold', color: '#333', fontSize: 16 },
-  cardSeverity: { fontSize: 12, fontWeight: 'bold' },
-  cardTime: { fontSize: 12, color: '#999', marginBottom: 5 },
-  cardDate: { fontWeight: 'bold', color: '#333' },
-  cardStatus: { fontSize: 12, fontWeight: 'bold' },
-  cardFooter: { gap: 4 },
-  cardDrug: { fontSize: 13, color: '#333', fontWeight: '600' },
-  cardSite: { fontSize: 13, color: '#666' },
-  cardNote: { fontSize: 13, color: '#999', fontStyle: 'italic' },
-  emptyState: { padding: 40, alignItems: 'center' },
-  emptyText: { color: '#999', textAlign: 'center' },
+  container: { flex: 1, backgroundColor: '#F7F8FA' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 60, paddingBottom: 15, paddingHorizontal: 20, backgroundColor: 'white' },
+  headerTitle: { fontSize: 22, fontWeight: '900' },
+  headerSub: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  scrollContent: { padding: 20, paddingBottom: 100 },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  card: { marginBottom: 20 },
+  cardLabel: { fontSize: 11, fontWeight: '700', marginBottom: 10, letterSpacing: 0.5, marginLeft: 4 },
+  chart: { marginVertical: 8, borderRadius: 16, paddingRight: 40 },
+  weightSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  currentWeightText: { fontSize: 24, fontWeight: '900' },
+  weightChange: { fontSize: 13, fontWeight: '800' },
+  listSection: { marginTop: 10 },
+  historyCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 18 },
+  historyIconBox: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#F0F0F2', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
+  historyTitle: { fontSize: 13, fontWeight: '800', textTransform: 'capitalize' },
+  historyDate: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  historyWeight: { fontSize: 13, fontWeight: '800' },
+  emptyChart: { height: 100, justifyContent: 'center', alignItems: 'center' },
+  emptyText: { textAlign: 'center', padding: 20 },
 })

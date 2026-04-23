@@ -12,8 +12,11 @@ import OnboardingScreen from './src/screens/OnboardingScreen'
 import MedicationTimelineScreen from './src/screens/MedicationTimelineScreen'
 import LogSideEffectScreen from './src/screens/LogSideEffectScreen'
 import ProfileScreen from './src/screens/ProfileScreen'
-import { ActivityIndicator, View, Platform, StyleSheet } from 'react-native'
+import AchievementsScreen from './src/screens/AchievementsScreen'
+import SkeletonLoader from './src/components/SkeletonLoader'
+import { ActivityIndicator, View, Platform, StyleSheet, Dimensions } from 'react-native'
 
+const { width } = Dimensions.get('window')
 const Stack = createNativeStackNavigator()
 
 function AppNavigator() {
@@ -22,17 +25,16 @@ function AppNavigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F5F5' }}>
-        <ActivityIndicator size="large" color="#7BAF8E" />
+      <View style={{ flex: 1, backgroundColor: '#F5F5F5', alignItems: 'center', paddingTop: 100, paddingHorizontal: 30 }}>
+        <SkeletonLoader width={150} height={40} style={{ marginBottom: 40 }} />
+        <SkeletonLoader width={width - 60} height={120} borderRadius={20} style={{ marginBottom: 20 }} />
+        <SkeletonLoader width={width - 60} height={200} borderRadius={20} style={{ marginBottom: 20 }} />
+        <SkeletonLoader width={200} height={20} style={{ marginBottom: 10 }} />
+        <SkeletonLoader width={150} height={20} />
       </View>
     )
   }
 
-  // LOGIC:
-  // 1. If not authenticated (no session AND not skipped), show Auth
-  // 2. If authenticated BUT onboarding not done, show Onboarding
-  // 3. Otherwise, show Main App (Home, etc)
-  
   const isAuthenticated = !!session || skippedAuth
   const needsOnboarding = !settings.hasCompletedOnboarding
 
@@ -58,6 +60,7 @@ function AppNavigator() {
           <Stack.Screen name="MedicationTimeline" component={MedicationTimelineScreen} options={{ headerShown: false }} />
           <Stack.Screen name="LogSideEffect" component={LogSideEffectScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Achievements" component={AchievementsScreen} options={{ headerShown: false }} />
         </>
       )}
     </Stack.Navigator>

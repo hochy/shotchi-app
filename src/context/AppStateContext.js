@@ -12,6 +12,8 @@ export const AppStateProvider = ({ children }) => {
   const [weightEntries, setWeightEntries] = useState([])
   const [sideEffects, setSideEffects] = useState([])
   const [settings, setSettings] = useState({
+    nickname: '',
+    darkMode: false,
     injectionDay: 'monday',
     reminderTime: '09:00',
     notificationsEnabled: true,
@@ -54,6 +56,8 @@ export const AppStateProvider = ({ children }) => {
 
       if (profileData) {
         setSettings({
+          nickname: profileData.nickname || '',
+          darkMode: !!profileData.dark_mode,
           injectionDay: profileData.injection_day,
           reminderTime: profileData.reminder_time,
           notificationsEnabled: profileData.notifications_enabled,
@@ -84,7 +88,6 @@ export const AppStateProvider = ({ children }) => {
     }
   }, [])
 
-  // Mutations with automatic refresh
   const logInjection = async (data) => {
     const result = await database.logInjection(data)
     if (result) await loadAllData()
@@ -95,7 +98,6 @@ export const AppStateProvider = ({ children }) => {
     const result = await database.logWeight(weight, unit)
     if (result) {
       await loadAllData()
-      // Trigger Health Sync if enabled
       if (settings.healthSyncEnabled) {
         await HealthService.syncWeight(weight)
       }
@@ -110,60 +112,33 @@ export const AppStateProvider = ({ children }) => {
   }
 
   const updateSettings = async (updates) => {
-    // Strictly map to database column names (snake_case)
+    // Optimistically update local state for instant feedback
+    setSettings(prev => ({ ...prev, ...updates }))
+
     const dbUpdates = {}
-    
-    if (updates.injectionDay !== undefined || updates.injection_day !== undefined) 
-      dbUpdates.injection_day = updates.injectionDay || updates.injection_day
-    
-    if (updates.reminderTime !== undefined || updates.reminder_time !== undefined) 
-      dbUpdates.reminder_time = updates.reminderTime || updates.reminder_time
-    
-    if (updates.notificationsEnabled !== undefined || updates.notifications_enabled !== undefined) 
-      dbUpdates.notifications_enabled = updates.notificationsEnabled ?? updates.notifications_enabled
-    
-    if (updates.overdueEnabled !== undefined || updates.overdue_enabled !== undefined) 
-      dbUpdates.overdue_enabled = updates.overdueEnabled ?? updates.overdue_enabled
-    
-    if (updates.characterType !== undefined || updates.character_type !== undefined) 
-      dbUpdates.character_type = updates.characterType || updates.character_type
-    
-    if (updates.characterColor !== undefined || updates.character_color !== undefined) 
-      dbUpdates.character_color = updates.characterColor || updates.character_color
-    
-    if (updates.hasCompletedOnboarding !== undefined || updates.has_completed_onboarding !== undefined) 
-      dbUpdates.has_completed_onboarding = updates.hasCompletedOnboarding ?? updates.has_completed_onboarding
-    
-    if (updates.lastMilestoneCelebrated !== undefined || updates.last_milestone_celebrated !== undefined) 
-      dbUpdates.last_milestone_celebrated = updates.lastMilestoneCelebrated ?? updates.last_milestone_celebrated
-    
-    if (updates.preferredDrug !== undefined || updates.preferred_drug !== undefined)
-      dbUpdates.preferred_drug = updates.preferredDrug || updates.preferred_drug
-    
-    if (updates.preferredDosage !== undefined || updates.preferred_dosage !== undefined)
-      dbUpdates.preferred_dosage = updates.preferredDosage ?? updates.preferred_dosage
-
-    if (updates.dosesOnHand !== undefined || updates.doses_on_hand !== undefined)
-      dbUpdates.doses_on_hand = updates.dosesOnHand ?? updates.doses_on_hand
-
-    if (updates.refillThreshold !== undefined || updates.refill_threshold !== undefined)
-      dbUpdates.refill_threshold = updates.refillThreshold ?? updates.refill_threshold
-    
-    if (updates.healthSyncEnabled !== undefined || updates.health_sync_enabled !== undefined)
-      dbUpdates.health_sync_enabled = updates.healthSyncEnabled ?? updates.health_sync_enabled
-
+    if (updates.nickname !== undefined) dbUpdates.nickname = updates.nickname
+    if (updates.darkMode !== undefined) dbUpdates.dark_mode = updates.darkMode
+    if (updates.injectionDay !== undefined) dbUpdates.injection_day = updates.injectionDay
+    if (updates.reminderTime !== undefined) dbUpdates.reminder_time = updates.reminderTime
+    if (updates.notificationsEnabled !== undefined) dbUpdates.notifications_enabled = updates.notificationsEnabled
+    if (updates.overdueEnabled !== undefined) dbUpdates.overdue_enabled = updates.overdueEnabled
+    if (updates.characterType !== undefined) dbUpdates.character_type = updates.characterType
+    if (updates.characterColor !== undefined) dbUpdates.character_color = updates.characterColor
+    if (updates.hasCompletedOnboarding !== undefined) dbUpdates.has_completed_onboarding = updates.hasCompletedOnboarding
+    if (updates.lastMilestoneCelebrated !== undefined) dbUpdates.last_milestone_celebrated = updates.lastMilestoneCelebrated
+    if (updates.preferredDrug !== undefined) dbUpdates.preferred_drug = updates.preferredDrug
+    if (updates.preferredDosage !== undefined) dbUpdates.preferred_dosage = updates.preferredDosage
+    if (updates.dosesOnHand !== undefined) dbUpdates.doses_on_hand = updates.dosesOnHand
+    if (updates.refillThreshold !== undefined) dbUpdates.refill_threshold = updates.refillThreshold
+    if (updates.healthSyncEnabled !== undefined) dbUpdates.health_sync_enabled = updates.healthSyncEnabled
     if (updates.timezone !== undefined) dbUpdates.timezone = updates.timezone
 
     const result = await database.updateProfile(dbUpdates)
     if (result) {
       await loadAllData()
-      
-      // If health sync just enabled, request permissions
       if (updates.healthSyncEnabled === true) {
         await HealthService.requestPermissions();
       }
-
-      // Notification rescheduling logic
       if (dbUpdates.injection_day || dbUpdates.reminder_time || dbUpdates.notifications_enabled === true) {
         const profile = await database.getProfile()
         if (profile && (dbUpdates.notifications_enabled !== false && profile.notifications_enabled)) {
@@ -196,9 +171,7 @@ export const AppStateProvider = ({ children }) => {
     return result
   }
 
-  // Auth listener
   useEffect(() => {
-    // Initial permission request
     NotificationService.requestPermissions()
 
     supabase.auth.getSession().then(({ data: { session } }) => {
