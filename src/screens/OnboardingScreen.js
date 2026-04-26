@@ -17,6 +17,7 @@ export default function OnboardingScreen({ navigation }) {
   const [med, setMed] = useState('Semaglutide (Wegovy)')
   const [day, setDay] = useState('monday')
   const [dosage, setDosage] = useState(0.25)
+  const [reminderTime, setReminderTime] = useState('09:00')
 
   const meds = [
     { name: 'Semaglutide (Wegovy)', generic: 'semaglutide', badge: 'Weekly', emoji: '💚' },
@@ -36,15 +37,46 @@ export default function OnboardingScreen({ navigation }) {
     { label: 'Sun', value: 'sunday' },
   ]
 
+  // Time Stepper Logic
+  const getTimeParts = () => {
+    const [h24, m] = reminderTime.split(':').map(Number)
+    const ampm = h24 >= 12 ? 'PM' : 'AM'
+    const h12 = h24 % 12 || 12
+    return { h12, m, ampm }
+  }
+
+  const setTimePart = (part, delta) => {
+    const current = getTimeParts()
+    let h12 = current.h12
+    let m = current.m
+    let ampm = current.ampm
+
+    if (part === 'h') {
+      h12 = ((h12 + delta - 1 + 12) % 12) + 1
+    } else if (part === 'm') {
+      m = (m + delta + 60) % 60
+    } else if (part === 'ampm') {
+      ampm = ampm === 'AM' ? 'PM' : 'AM'
+    }
+
+    let h24 = h12
+    if (ampm === 'PM' && h12 < 12) h24 += 12
+    if (ampm === 'AM' && h12 === 12) h24 = 0
+
+    const finalTime = `${h24.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+    setReminderTime(finalTime)
+    Haptics.selectionAsync()
+  }
+
   const handleFinish = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     await updateSettings({
       preferredDrug: med,
       preferredDosage: dosage,
       injectionDay: day,
+      reminderTime: reminderTime,
       hasCompletedOnboarding: true
     })
-    // Navigation is handled by App.js listener
   }
 
   const renderWelcome = () => (
@@ -101,58 +133,82 @@ export default function OnboardingScreen({ navigation }) {
     </View>
   )
 
-  const renderSchedule = () => (
-    <View style={styles.stepContent}>
-      <View style={styles.stepHeader}>
-        <Text style={styles.stepTitle}>When is your injection day?</Text>
-        <Text style={styles.stepSub}>We'll remind you so you never miss a dose</Text>
-      </View>
-      
-      <View style={styles.daysRow}>
-        {days.map(d => (
-          <TouchableOpacity 
-            key={d.value} 
-            onPress={() => { Haptics.selectionAsync(); setDay(d.value); }}
-            style={[
-              styles.dayBtn, 
-              day === d.value ? { backgroundColor: settings.characterColor, borderColor: settings.characterColor } : { backgroundColor: 'white', borderColor: '#eee' }
-            ]}
-          >
-            <Text style={[styles.dayText, day === d.value && { color: 'white' }]}>{d.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+  const renderSchedule = () => {
+    const timeParts = getTimeParts()
+    return (
+      <View style={styles.stepContent}>
+        <View style={styles.stepHeader}>
+          <Text style={styles.stepTitle}>When is your injection day?</Text>
+          <Text style={styles.stepSub}>We'll remind you so you never miss a dose</Text>
+        </View>
+        
+        <View style={styles.daysRow}>
+          {days.map(d => (
+            <TouchableOpacity 
+              key={d.value} 
+              onPress={() => { Haptics.selectionAsync(); setDay(d.value); }}
+              style={[
+                styles.dayBtn, 
+                day === d.value ? { backgroundColor: settings.characterColor, borderColor: settings.characterColor } : { backgroundColor: 'white', borderColor: '#eee' }
+              ]}
+            >
+              <Text style={[styles.dayText, day === d.value && { color: 'white' }]}>{d.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      <View style={styles.timeCard}>
-        <Text style={styles.miniLabel}>REMINDER TIME</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }}>
-          <Text style={[styles.timeLarge, { color: settings.characterColor }]}>9:00</Text>
-          <View style={{ gap: 4 }}>
-            <View style={[styles.periodBadge, { backgroundColor: settings.characterColor }]}><Text style={styles.periodText}>AM</Text></View>
-            <View style={styles.periodBadgeInactive}><Text style={styles.periodTextInactive}>PM</Text></View>
+        <View style={styles.timeCard}>
+          <Text style={styles.miniLabel}>REMINDER TIME</Text>
+          <View style={styles.stepperRow}>
+            {/* Hour */}
+            <View style={styles.stepperGroup}>
+              <TouchableOpacity onPress={() => setTimePart('h', 1)} style={styles.stepBtn}><Text style={[styles.stepBtnText, { color: settings.characterColor }]}>+</Text></TouchableOpacity>
+              <Text style={styles.stepVal}>{timeParts.h12}</Text>
+              <TouchableOpacity onPress={() => setTimePart('h', -1)} style={styles.stepBtn}><Text style={[styles.stepBtnText, { color: settings.characterColor }]}>−</Text></TouchableOpacity>
+              <Text style={styles.stepLabel}>HOUR</Text>
+            </View>
+            
+            <Text style={styles.stepperColon}>:</Text>
+
+            {/* Min */}
+            <View style={styles.stepperGroup}>
+              <TouchableOpacity onPress={() => setTimePart('m', 5)} style={styles.stepBtn}><Text style={[styles.stepBtnText, { color: settings.characterColor }]}>+</Text></TouchableOpacity>
+              <Text style={styles.stepVal}>{timeParts.m.toString().padStart(2, '0')}</Text>
+              <TouchableOpacity onPress={() => setTimePart('m', -5)} style={styles.stepBtn}><Text style={[styles.stepBtnText, { color: settings.characterColor }]}>−</Text></TouchableOpacity>
+              <Text style={styles.stepLabel}>MIN</Text>
+            </View>
+
+            {/* AM/PM */}
+            <TouchableOpacity onPress={() => setTimePart('ampm')} style={[styles.ampmBtn, { backgroundColor: `${settings.characterColor}15` }]}>
+              <Text style={[styles.ampmText, { color: settings.characterColor }]}>{timeParts.ampm}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
-    </View>
-  )
+    )
+  }
 
-  const renderAllSet = () => (
-    <View style={styles.stepContent}>
-      <Adi state="excited" color={settings.characterColor} size={150} />
-      <View style={{ alignItems: 'center', marginTop: 20 }}>
-        <Text style={styles.welcomeTitle}>You're all set! 🎉</Text>
-        <Text style={styles.summaryText}>
-          We'll remind you every <Text style={{ color: settings.characterColor, fontWeight: '900' }}>{day.charAt(0).toUpperCase() + day.slice(1)}</Text> at <Text style={{ color: settings.characterColor, fontWeight: '900' }}>9:00 AM</Text>
-        </Text>
-      </View>
+  const renderAllSet = () => {
+    const timeParts = getTimeParts()
+    const formattedTime = `${timeParts.h12}:${timeParts.m.toString().padStart(2, '0')} ${timeParts.ampm}`
+    return (
+      <View style={styles.stepContent}>
+        <Adi state="excited" color={settings.characterColor} size={150} />
+        <View style={{ alignItems: 'center', marginTop: 20 }}>
+          <Text style={styles.welcomeTitle}>You're all set! 🎉</Text>
+          <Text style={styles.summaryText}>
+            We'll remind you every <Text style={{ color: settings.characterColor, fontWeight: '900' }}>{day.charAt(0).toUpperCase() + day.slice(1)}</Text> at <Text style={{ color: settings.characterColor, fontWeight: '900' }}>{formattedTime}</Text>
+          </Text>
+        </View>
 
-      <View style={[styles.summaryCard, { backgroundColor: `${settings.characterColor}15` }]}>
-        <Text style={styles.summaryRow}>💊 <Text style={{ fontWeight: 'bold' }}>{med.split(' (')[1].replace(')', '')}</Text></Text>
-        <Text style={styles.summaryRow}>📅 Every <Text style={{ fontWeight: 'bold' }}>{day.charAt(0).toUpperCase() + day.slice(1)}</Text></Text>
-        <Text style={styles.summaryRow}>🔔 Reminder at <Text style={{ fontWeight: 'bold' }}>9:00 AM</Text></Text>
+        <View style={[styles.summaryCard, { backgroundColor: `${settings.characterColor}15` }]}>
+          <Text style={styles.summaryRow}>💊 <Text style={{ fontWeight: 'bold' }}>{med.split(' (')[1].replace(')', '')}</Text></Text>
+          <Text style={styles.summaryRow}>📅 Every <Text style={{ fontWeight: 'bold' }}>{day.charAt(0).toUpperCase() + day.slice(1)}</Text></Text>
+          <Text style={styles.summaryRow}>🔔 Reminder at <Text style={{ fontWeight: 'bold' }}>{formattedTime}</Text></Text>
+        </View>
       </View>
-    </View>
-  )
+    )
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -216,13 +272,17 @@ const styles = StyleSheet.create({
   daysRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, justifyContent: 'center' },
   dayBtn: { width: '22%', height: 44, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
   dayText: { fontSize: 11, fontWeight: '800', color: '#aaa' },
-  timeCard: { width: '100%', backgroundColor: 'white', borderRadius: 20, padding: 20, marginTop: 30, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 15, elevation: 3 },
-  miniLabel: { fontSize: 10, color: '#aaa', fontWeight: '800', letterSpacing: 1 },
-  timeLarge: { fontSize: 42, fontWeight: '900' },
-  periodBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8 },
-  periodBadgeInactive: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, backgroundColor: '#f0f0f2' },
-  periodText: { color: 'white', fontSize: 13, fontWeight: '900' },
-  periodTextInactive: { color: '#aaa', fontSize: 13, fontWeight: '900' },
+  timeCard: { width: '100%', backgroundColor: 'white', borderRadius: 20, padding: 20, marginTop: 30, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 15, elevation: 3, alignItems: 'center' },
+  miniLabel: { fontSize: 10, color: '#aaa', fontWeight: '800', letterSpacing: 1, marginBottom: 15 },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: 15 },
+  stepperGroup: { alignItems: 'center', gap: 5 },
+  stepperColon: { fontSize: 28, fontWeight: '900', color: '#1c1c1e', marginTop: -20 },
+  stepBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f9f9f9', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#eee' },
+  stepBtnText: { fontSize: 20, fontWeight: '900' },
+  stepVal: { fontSize: 28, fontWeight: '900', color: '#1c1c1e', minWidth: 40, textAlign: 'center' },
+  stepLabel: { fontSize: 8, fontWeight: '800', color: '#aaa', letterSpacing: 1 },
+  ampmBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  ampmText: { fontSize: 16, fontWeight: '900' },
   summaryText: { fontSize: 15, color: '#666', fontWeight: '600', marginTop: 8, textAlign: 'center', lineHeight: 22 },
   summaryCard: { width: '100%', borderRadius: 20, padding: 20, marginTop: 30 },
   summaryRow: { fontSize: 15, color: '#1c1c1e', marginBottom: 8 },

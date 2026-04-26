@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MotiView } from 'moti';
 
 const { width } = Dimensions.get('window');
+const containerWidth = Math.min(width, 500); // Constrain for web frame
 
 export default function AchievementsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -43,7 +44,7 @@ export default function AchievementsScreen({ navigation }) {
   const upcoming = badges.filter(b => !b.earned);
 
   const BadgeCard = ({ badge }) => {
-    const radius = 23;
+    const radius = 20; // Smaller radius for smaller cards
     const circumference = 2 * Math.PI * radius;
     const progress = badge.progress || 0;
     const strokeDashoffset = circumference - (progress / 100) * circumference;
@@ -56,20 +57,20 @@ export default function AchievementsScreen({ navigation }) {
       >
         {!badge.earned && (
           <View style={styles.progressRing}>
-            <Svg width={52} height={52}>
-              <Circle cx={26} cy={26} r={radius} fill="none" stroke={isDark ? '#333' : "#ddd"} strokeWidth={3} />
+            <Svg width={46} height={46}>
+              <Circle cx={23} cy={23} r={radius} fill="none" stroke={isDark ? '#333' : "#ddd"} strokeWidth={2.5} />
               <Circle 
-                cx={26} cy={26} r={radius} fill="none" stroke={themeColor} strokeWidth={3}
+                cx={23} cy={23} r={radius} fill="none" stroke={themeColor} strokeWidth={2.5}
                 strokeDasharray={circumference}
                 strokeDashoffset={strokeDashoffset}
                 strokeLinecap="round"
-                transform="rotate(-90 26 26)"
+                transform="rotate(-90 23 23)"
               />
             </Svg>
           </View>
         )}
         <Text style={[styles.badgeEmoji, !badge.earned && { opacity: 0.4 }]}>{badge.emoji}</Text>
-        <Text style={[styles.badgeTitle, { color: textColor }]} numberOfLines={1}>{badge.title}</Text>
+        <Text style={[styles.badgeTitle, { color: textColor }]} numberOfLines={2}>{badge.title}</Text>
         <Text style={[styles.badgeMeta, { color: subTextColor }]}>{badge.earned ? 'EARNED' : `${Math.round(progress)}%`}</Text>
       </Card>
     );
@@ -88,7 +89,7 @@ export default function AchievementsScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]} showsVerticalScrollIndicator={false}>
         <View style={[styles.streakBanner, { backgroundColor: themeColor }]}>
           <Text style={{ fontSize: 36 }}>🔥</Text>
           <View style={{ flex: 1, marginLeft: 15 }}>
@@ -118,9 +119,20 @@ const styles = StyleSheet.create({
   bannerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600', marginTop: 2 },
   sectionLabel: { fontSize: 12, color: '#aaa', fontWeight: '800', letterSpacing: 1, marginBottom: 15, textTransform: 'uppercase' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 30 },
-  badgeCard: { width: (width - 60) / 3, alignItems: 'center', paddingVertical: 15, paddingHorizontal: 5, borderRadius: 18, borderWidth: 2, position: 'relative', padding: 0 },
-  badgeEmoji: { fontSize: 28, marginBottom: 5 },
-  badgeTitle: { fontSize: 10, fontWeight: '800', textAlign: 'center' },
-  badgeMeta: { fontSize: 9, fontWeight: '700', marginTop: 4 },
-  progressRing: { position: 'absolute', top: 5 },
+  badgeCard: { 
+    width: (containerWidth - 60) / 3, 
+    alignItems: 'center', 
+    paddingVertical: 12, 
+    paddingHorizontal: 4, 
+    borderRadius: 18, 
+    borderWidth: 2, 
+    position: 'relative', 
+    padding: 0,
+    minHeight: 100,
+    justifyContent: 'center'
+  },
+  badgeEmoji: { fontSize: 24, marginBottom: 4 },
+  badgeTitle: { fontSize: 9, fontWeight: '800', textAlign: 'center', paddingHorizontal: 2 },
+  badgeMeta: { fontSize: 8, fontWeight: '700', marginTop: 4 },
+  progressRing: { position: 'absolute', top: 8 },
 });
