@@ -28,7 +28,11 @@ export default function WeightLogModal({ visible, onClose, onSave, themeColor = 
           
           <View style={styles.inputContainer}>
             <TextInput
-              style={[styles.input, { color: themeColor }]}
+              style={[
+                styles.input, 
+                { color: themeColor },
+                Platform.OS === 'web' && { outlineStyle: 'none' }
+              ]}
               placeholder="000.0"
               keyboardType="decimal-pad"
               autoFocus

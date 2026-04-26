@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native'
 import { supabase } from '../lib/supabase'
 import * as Linking from 'expo-linking'
 import * as WebBrowser from 'expo-web-browser'
@@ -49,7 +49,17 @@ export default function AuthScreen({ navigation, onSkip }) {
       setLoading(true)
       console.log('Starting Google OAuth flow...')
       
-      const redirectUri = Linking.createURL('home')
+      // Robust Redirect URI logic
+      let redirectUri = Linking.createURL('home')
+      
+      // If we're on the web and NOT on localhost/local IP, use the actual domain
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const hostname = window.location.hostname
+        if (!hostname.includes('192.168') && hostname !== 'localhost') {
+          redirectUri = `${window.location.protocol}//${window.location.host}/home`
+        }
+      }
+      
       console.log('Redirect URI:', redirectUri)
 
       const { data, error } = await supabase.auth.signInWithOAuth({

@@ -3,9 +3,10 @@ import { View, Text, StyleSheet, Dimensions, Pressable } from 'react-native';
 import Svg, { Path, Circle, Text as SvgText, TSpan } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
+const containerWidth = Math.min(width, 500); // Constrain for web
 const DIAGRAM_WIDTH = 200;
 const DIAGRAM_HEIGHT = 300;
-const SCALE = (width * 0.7) / DIAGRAM_WIDTH;
+const SCALE = (containerWidth * 0.6) / DIAGRAM_WIDTH; // Slightly smaller scale for better fit
 
 export default function BodyDiagram({ selectedSite, onSelectSite, themeColor = '#7BAF8E', lastUsedSite }) {
   

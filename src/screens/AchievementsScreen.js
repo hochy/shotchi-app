@@ -92,7 +92,7 @@ export default function AchievementsScreen({ navigation }) {
         <View style={[styles.streakBanner, { backgroundColor: themeColor }]}>
           <Text style={{ fontSize: 36 }}>🔥</Text>
           <View style={{ flex: 1, marginLeft: 15 }}>
-            <Text style={styles.bannerTitle}>{streaks.current}-Week Streak!</Text>
+            <Text style={styles.bannerTitle}>{streaks?.current || 0}-Week Streak!</Text>
             <Text style={styles.bannerSub}>Every shot on time. You're unstoppable.</Text>
           </View>
         </View>
